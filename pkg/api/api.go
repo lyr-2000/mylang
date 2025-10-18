@@ -14,6 +14,10 @@ type MaiExecutor struct {
 	*mylang.MylangInterpreter
 }
 
+func (m *MaiExecutor) SetCustomVariableGetter(getter func (name string) (any)) {
+	m.MylangInterpreter.Interp.CustomVariableGetter = getter
+}
+
 func NewMaiExecutor() *MaiExecutor {
 	d := &MaiExecutor{
 		MylangInterpreter: mylang.NewMylangInterpreter(),

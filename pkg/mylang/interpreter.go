@@ -44,6 +44,7 @@ func (e *Environment) Set(name string, val interface{}) interface{} {
 // Interpreter 代表解释器
 type Interpreter struct {
 	env         *Environment
+	CustomVariableGetter func (name string) (any) // if nil, use env.Get(name) to get the variable value
 	drawingVars map[string]struct{} // 记录画图变量
 	Err         error
 }
@@ -202,12 +203,18 @@ func (i *Interpreter) evalBinaryExpression(be *BinaryExpression) interface{} {
 	return nil
 }
 
-func (i *Interpreter) evalIdentifier(id *Identifier) interface{} {
-	if val, ok := i.env.Get(id.Value); ok {
-		Logger.Println("Found identifier", id.Value, "with value", val)
+func (i *Interpreter) evalIdentifier(symbol *Identifier) interface{} {
+	if i.CustomVariableGetter != nil {
+		x := i.CustomVariableGetter(symbol.Value)
+		if x != nil {
+			return x
+		}
+	}
+	if val, ok := i.env.Get(symbol.Value); ok {
+		Logger.Println("Found identifier", symbol.Value, "with value", val)
 		return val
 	}
-	Logger.Println("Identifier", id.Value, "not found")
+	Logger.Println("Identifier", symbol.Value, "not found")
 	return nil
 }
 
