@@ -1,5 +1,10 @@
 package mylang
 
+import (
+	"unicode"
+	"unicode/utf8"
+)
+
 // TokenType 定义了令牌的类型
 type TokenType int
 
@@ -8,6 +13,7 @@ const (
 	TokenError
 	TokenNumber
 	TokenIdentifier
+	TokenDollar
 	TokenPlus
 	TokenMinus
 	TokenMultiply
@@ -41,7 +47,7 @@ type Lexer struct {
 	input   string
 	pos     int
 	readPos int
-	ch      byte
+	ch      rune
 }
 
 // NewLexer 创建一个新的词法分析器
@@ -52,20 +58,22 @@ func NewLexer(input string) *Lexer {
 }
 
 func (l *Lexer) readChar() {
+	l.pos = l.readPos
 	if l.readPos >= len(l.input) {
 		l.ch = 0
 	} else {
-		l.ch = l.input[l.readPos]
+		var size int
+		l.ch, size = utf8.DecodeRuneInString(l.input[l.readPos:])
+		l.readPos += size
 	}
-	l.pos = l.readPos
-	l.readPos++
 }
 
-func (l *Lexer) peekChar() byte {
+func (l *Lexer) peekChar() rune {
 	if l.readPos >= len(l.input) {
 		return 0
 	}
-	return l.input[l.readPos]
+	ch, _ := utf8.DecodeRuneInString(l.input[l.readPos:])
+	return ch
 }
 
 func (l *Lexer) NextToken() Token {
@@ -91,6 +99,9 @@ func (l *Lexer) NextToken() Token {
 		l.readChar()
 	case ')':
 		tok = Token{Type: TokenRParen, Literal: string(l.ch)}
+		l.readChar()
+	case '$':
+		tok = Token{Type: TokenDollar, Literal: string(l.ch)}
 		l.readChar()
 	case ';':
 		tok = Token{Type: TokenSemicolon, Literal: string(l.ch)}
@@ -166,6 +177,8 @@ func (l *Lexer) NextToken() Token {
 			}
 			return tok
 		} else if isDigit(l.ch) {
+			// 检查是否可能是标识符的一部分（如果前面有字母或下划线）
+			// 这里需要更复杂的逻辑来处理 abcd_1 这种情况
 			tok.Type = TokenNumber
 			tok.Literal = l.readNumber()
 			return tok
@@ -185,7 +198,7 @@ func (l *Lexer) skipWhitespace() {
 
 func (l *Lexer) readIdentifier() string {
 	pos := l.pos
-	for isLetter(l.ch) || isDigit(l.ch) {
+	for isLetter(l.ch) || isDigit(l.ch) || l.ch == '_' {
 		l.readChar()
 	}
 	return l.input[pos:l.pos]
@@ -214,10 +227,10 @@ func (l *Lexer) readString() string {
 	return l.input[pos:l.pos-1] // 去掉结束的单引号
 }
 
-func isLetter(ch byte) bool {
-	return 'a' <= ch && ch <= 'z' || 'A' <= ch && ch <= 'Z' || ch == '_'
+func isLetter(ch rune) bool {
+	return unicode.IsLetter(ch) || ch == '_'
 }
 
-func isDigit(ch byte) bool {
-	return '0' <= ch && ch <= '9'
+func isDigit(ch rune) bool {
+	return unicode.IsDigit(ch)
 }

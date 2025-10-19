@@ -3,12 +3,13 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 
-	grob "github.com/lyr-2000/mylang/pkg/extensions/tradingcharts/go-plotly/generated/v2.34.0/graph_objects"
-	"github.com/lyr-2000/mylang/pkg/extensions/tradingcharts/go-plotly/pkg/types"
 	"github.com/lyr-2000/mylang/pkg/api"
 	"github.com/lyr-2000/mylang/pkg/extensions/tradingcharts/charts"
+	grob "github.com/lyr-2000/mylang/pkg/extensions/tradingcharts/go-plotly/generated/v2.34.0/graph_objects"
+	"github.com/lyr-2000/mylang/pkg/extensions/tradingcharts/go-plotly/pkg/types"
 )
 
 type Klinedef struct {
@@ -49,6 +50,8 @@ func main() {
 		"VOLUME":   "V",
 		"dateTime": "Ts",
 	})
+	executor.SetVar("$abcd_1好",16)
+	executor.RunCode("abc你好456:=$abcd_1好")
 
 	chart := charts.NewKlineChart(executor, "test")
 	chart.SetDefaultKlineChart()
@@ -56,6 +59,7 @@ func main() {
 	for i := 0; i < 30; i++ {
 		x = append(x, types.StringType(fmt.Sprintf("buy %d", i)))
 	}
+	log.Println(executor.GetVariable("abc你好456"))
 	chart.AddMarker(0, "buy", types.DataArray(datetime[:30]),
 		types.DataArray(mp["CLOSE"][:30]),
 		x, &grob.ScatterMarker{

@@ -2,12 +2,13 @@ package mylang
 
 import (
 	"fmt"
+	"io"
 	stdlog "log"
-	"os"
+	// "os"
 )
 
 var (
-	Logger = stdlog.New(os.Stdout, "", stdlog.LstdFlags)
+	Logger = stdlog.New(io.Discard, "", stdlog.LstdFlags)
 )
 
 func SetLogger(logger *stdlog.Logger) {
