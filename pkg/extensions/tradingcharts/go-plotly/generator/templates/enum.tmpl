@@ -1,0 +1,10 @@
+{{- $root := . -}}
+// {{.Name }} {{.Description}}
+// {{ .JSONPath }}
+type {{.Name }} {{.Type}} 
+
+{{ .ConstOrVar }} (
+    {{ range .Values -}}
+    {{.Name}} {{$root.Name}} = {{.Value}}
+    {{ end }}
+)

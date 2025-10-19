@@ -1,5 +1,7 @@
 package mylang
 
+import "github.com/spf13/cast"
+
 // MylangInterpreter 代表麦语言解释器的接口
 type MylangInterpreter struct {
 	Interp *Interpreter
@@ -39,7 +41,13 @@ func (mi *MylangInterpreter) GetVariable(name string) (interface{}, bool) {
 func (mi *MylangInterpreter) SetVar(name string, value interface{}) {
 	mi.Env.Set(name, value)
 }
-
+func (mi *MylangInterpreter) GetVariableSlice(name string) ([]interface{}, bool) {
+	b,ok:=  mi.Env.Get(name)
+	if !ok {
+		return nil, false
+	}
+	return cast.ToSlice(b), true
+}
 // GetDrawingVariables 获取所有画图变量
 func (mi *MylangInterpreter) GetDrawingVariables() map[string]struct{} {
 	return mi.Interp.drawingVars

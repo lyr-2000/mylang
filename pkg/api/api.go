@@ -14,7 +14,7 @@ type MaiExecutor struct {
 	*mylang.MylangInterpreter
 }
 
-func (m *MaiExecutor) SetCustomVariableGetter(getter func (name string) (any)) {
+func (m *MaiExecutor) SetCustomVariableGetter(getter func(name string) any) {
 	m.MylangInterpreter.Interp.CustomVariableGetter = getter
 }
 
@@ -32,6 +32,36 @@ func SetOutput(output io.Writer) {
 
 func Arrayfloat64(b any) []float64 {
 	return cast.ToFloat64Slice(b)
+}
+
+func (b *MaiExecutor) GetFloat64Array(name string) []float64 {
+	d, ok := b.MylangInterpreter.GetVariable(name)
+	if !ok {
+		return nil
+	}
+	return Arrayfloat64(d)
+}
+
+
+
+// OPEN,HIGH,LOW,CLOSE,VOLUME,UnixSec -> O,H,L,C,V,Ts
+func (b *MaiExecutor) SetVarNameAlias(alias map[string]string) {
+	if alias == nil {
+		alias = map[string]string {
+			"OPEN": "O",
+			"HIGH": "H",
+			"LOW": "L",
+			"CLOSE": "C",
+			"VOLUME": "V",
+		}
+	}
+	for name, alias := range alias {
+		d, ok := b.MylangInterpreter.GetVariable(name)
+		if ok {
+			b.MylangInterpreter.SetVar(alias, d)
+		}
+	}
+
 }
 
 // func (m *MaiExecutor) RegisterFunc(name string, fn func([]interface{}) interface{}) {

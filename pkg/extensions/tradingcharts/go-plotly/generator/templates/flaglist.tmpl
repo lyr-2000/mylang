@@ -1,0 +1,15 @@
+{{- $root := . -}}
+// {{.Name }} {{.Description}}
+// {{ .JSONPath }}
+type {{.Name }} {{.Type}} 
+
+{{ .ConstOrVar }} (
+    // Flags
+    {{ range .Flags -}}
+    {{.Name}} {{$root.Name}} = {{.Value}}
+    {{ end }}
+    // Extra
+    {{ range .Extra -}}
+    {{.Name}} {{$root.Name}} = {{.Value}}
+    {{ end }}
+)
