@@ -3,7 +3,7 @@ package grob
 import (
 	"encoding/json"
 
-	"github.com/MetalBlueberry/go-plotly/pkg/types"
+	"github.com/lyr-2000/mylang/pkg/extensions/tradingcharts/go-plotly/pkg/types"
 )
 
 // Types defined here are just meant to allow compilation for the template package

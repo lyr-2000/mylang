@@ -12,8 +12,8 @@ import (
 
 	// . "github.com/onsi/gomega/format"
 
-	"github.com/MetalBlueberry/go-plotly/generator"
-	"github.com/MetalBlueberry/go-plotly/generator/mocks"
+	"github.com/lyr-2000/mylang/pkg/extensions/tradingcharts/go-plotly/generator"
+	"github.com/lyr-2000/mylang/pkg/extensions/tradingcharts/go-plotly/generator/mocks"
 )
 
 // This test schema is used to make sure the generator works as expected

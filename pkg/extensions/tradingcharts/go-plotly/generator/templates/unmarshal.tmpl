@@ -5,7 +5,7 @@ package grob
 import (
 	"encoding/json"
 	"errors"
-	"github.com/MetalBlueberry/go-plotly/pkg/types"
+	"github.com/lyr-2000/mylang/pkg/extensions/tradingcharts/go-plotly/pkg/types"
 )
 
 type unmarshalType struct {

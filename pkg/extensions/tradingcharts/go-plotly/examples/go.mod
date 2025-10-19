@@ -3,7 +3,7 @@ module github.com/metalblueberry/plotly/examples
 go 1.22
 
 require (
-	github.com/MetalBlueberry/go-plotly v0.4.0
+	github.com/lyr-2000/mylang/pkg/extensions/tradingcharts/go-plotly v0.4.0
 	github.com/go-gota/gota v0.12.0
 	github.com/lucasb-eyer/go-colorful v1.2.0
 	github.com/pkg/browser v0.0.0-20240102092130-5ac0b6a4141c
@@ -16,4 +16,4 @@ require (
 	gonum.org/v1/gonum v0.15.0 // indirect
 )
 
-replace github.com/MetalBlueberry/go-plotly => ./../
+replace github.com/lyr-2000/mylang/pkg/extensions/tradingcharts/go-plotly => ./../

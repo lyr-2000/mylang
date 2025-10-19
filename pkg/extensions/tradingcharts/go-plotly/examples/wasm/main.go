@@ -6,8 +6,8 @@ import (
 	"encoding/json"
 	"syscall/js"
 
-	grob "github.com/MetalBlueberry/go-plotly/generated/v2.31.1/graph_objects"
-	"github.com/MetalBlueberry/go-plotly/pkg/types"
+	grob "github.com/lyr-2000/mylang/pkg/extensions/tradingcharts/go-plotly/generated/v2.31.1/graph_objects"
+	"github.com/lyr-2000/mylang/pkg/extensions/tradingcharts/go-plotly/pkg/types"
 )
 
 // to run this, wasm need to be set: GOOS=js GOARCH=wasm go build -o main.wasm

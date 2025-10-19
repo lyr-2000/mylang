@@ -8,7 +8,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/MetalBlueberry/go-plotly/generator"
+	"github.com/lyr-2000/mylang/pkg/extensions/tradingcharts/go-plotly/generator"
 )
 
 type Creator struct{}

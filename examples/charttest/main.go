@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"os"
 
-	grob "github.com/MetalBlueberry/go-plotly/generated/v2.34.0/graph_objects"
-	"github.com/MetalBlueberry/go-plotly/pkg/types"
+	grob "github.com/lyr-2000/mylang/pkg/extensions/tradingcharts/go-plotly/generated/v2.34.0/graph_objects"
+	"github.com/lyr-2000/mylang/pkg/extensions/tradingcharts/go-plotly/pkg/types"
 	"github.com/lyr-2000/mylang/pkg/api"
 	"github.com/lyr-2000/mylang/pkg/extensions/tradingcharts/charts"
 )

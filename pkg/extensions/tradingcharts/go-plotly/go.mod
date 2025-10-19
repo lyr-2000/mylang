@@ -1,4 +1,4 @@
-module github.com/MetalBlueberry/go-plotly
+module github.com/lyr-2000/mylang/pkg/extensions/tradingcharts/go-plotly
 
 go 1.22
 

@@ -4,9 +4,9 @@ import (
 	"encoding/json"
 	"sort"
 
-	grob "github.com/MetalBlueberry/go-plotly/generated/v2.34.0/graph_objects"
-	"github.com/MetalBlueberry/go-plotly/pkg/offline"
-	"github.com/MetalBlueberry/go-plotly/pkg/types"
+	grob "github.com/lyr-2000/mylang/pkg/extensions/tradingcharts/go-plotly/generated/v2.34.0/graph_objects"
+	"github.com/lyr-2000/mylang/pkg/extensions/tradingcharts/go-plotly/pkg/offline"
+	"github.com/lyr-2000/mylang/pkg/extensions/tradingcharts/go-plotly/pkg/types"
 	"github.com/lyr-2000/mylang/pkg/api"
 	"github.com/spf13/cast"
 )

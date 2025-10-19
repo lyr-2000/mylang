@@ -3,7 +3,7 @@ module github.com/lyr-2000/mylang
 go 1.25.1
 
 require (
-	github.com/MetalBlueberry/go-plotly v0.0.0-00010101000000-000000000000
+	github.com/lyr-2000/mylang/pkg/extensions/tradingcharts/go-plotly v0.0.0-00010101000000-000000000000
 	github.com/spf13/cast v1.10.0
 )
 
@@ -12,4 +12,4 @@ require (
 	golang.org/x/sys v0.23.0 // indirect
 )
 
-replace github.com/MetalBlueberry/go-plotly => ./pkg/extensions/tradingcharts/go-plotly
+replace github.com/lyr-2000/mylang/pkg/extensions/tradingcharts/go-plotly => ./pkg/extensions/tradingcharts/go-plotly

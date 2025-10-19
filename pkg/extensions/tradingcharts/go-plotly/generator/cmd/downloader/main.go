@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/MetalBlueberry/go-plotly/generator"
+	"github.com/lyr-2000/mylang/pkg/extensions/tradingcharts/go-plotly/generator"
 )
 
 // schemaPath location of the schemas file, holding all version to be created

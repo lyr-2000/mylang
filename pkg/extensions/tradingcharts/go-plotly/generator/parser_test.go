@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"log"
 
-	"github.com/MetalBlueberry/go-plotly/generator"
+	"github.com/lyr-2000/mylang/pkg/extensions/tradingcharts/go-plotly/generator"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
