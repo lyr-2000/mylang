@@ -59,13 +59,36 @@ func (mi *MylangInterpreter) GetVariable(name string) (interface{}, bool) {
 func (mi *MylangInterpreter) SetVar(name string, value interface{}) {
 	mi.Env.Set(name, value)
 }
+
 func (mi *MylangInterpreter) GetVariableSlice(name string) ([]interface{}, bool) {
-	b,ok:=  mi.Env.Get(name)
+	b, ok := mi.Env.Get(name)
 	if !ok {
 		return nil, false
 	}
-	return cast.ToSlice(b), true
+	return ToSlice(b)
 }
+
+func ToSlice(b any) ([]any, bool) {
+	sl, ok := b.([]string)
+	if ok {
+		return copySlice(sl), true
+	}
+	slf, ok := b.([]float64)
+	if ok {
+		return copySlice(slf), true
+	}
+	d := cast.ToSlice(b)
+	return d, true
+}
+
+func copySlice[T any](arr []T) []any {
+	do := make([]any, len(arr))
+	for i, v := range arr {
+		do[i] = v
+	}
+	return do
+}
+
 // GetDrawingVariables 获取所有画图变量
 func (mi *MylangInterpreter) GetDrawingVariables() map[string]struct{} {
 	return mi.Interp.drawingVars
