@@ -54,6 +54,7 @@ func main() {
 	executor.RunCode("abc你好456:=$abcd_1好")
 
 	chart := charts.NewKlineChart(executor, "test")
+	chart.SetTickFormatType(charts.TickFormatTypeDateTime)
 	chart.SetDefaultKlineChart()
 	var x []types.StringType
 	for i := 0; i < 30; i++ {

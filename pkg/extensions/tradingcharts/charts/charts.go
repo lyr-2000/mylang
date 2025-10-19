@@ -4,10 +4,10 @@ import (
 	"encoding/json"
 	"sort"
 
+	"github.com/lyr-2000/mylang/pkg/api"
 	grob "github.com/lyr-2000/mylang/pkg/extensions/tradingcharts/go-plotly/generated/v2.34.0/graph_objects"
 	"github.com/lyr-2000/mylang/pkg/extensions/tradingcharts/go-plotly/pkg/offline"
 	"github.com/lyr-2000/mylang/pkg/extensions/tradingcharts/go-plotly/pkg/types"
-	"github.com/lyr-2000/mylang/pkg/api"
 	"github.com/spf13/cast"
 )
 
@@ -46,18 +46,47 @@ type SubChart struct {
 	Name       string      `json:"name"`
 	Indicators []Indicator `json:"indicators"`
 }
+type Settings struct {
+	ChartSettings map[string]string
+}
+
+func (r *Settings) GetOrDefault(key string, defaultValue string) string {
+	if r == nil || r.ChartSettings[key] == "" {
+		return defaultValue
+	}
+	return r.ChartSettings[key]
+}
 
 type KlineChart struct {
-	Title    string
-	Tmp      map[int][]types.Trace
-	Executor *api.MaiExecutor
+	Title          string
+	Tmp            map[int][]types.Trace
+	Executor       *api.MaiExecutor
+	Settings       *Settings
+	TickFormatType string
 	// Fig      *grob.Fig
 	// KlineAlias map[string]string
 }
 
+var (
+	TickFormatTypeDateNum  = "%Y%m%d"
+	TickFormatTypeDate     = "%Y-%m-%d"
+	TickFormatTypeDateTime = "%Y-%m-%d %H:%M"
+)
+
+func (r *KlineChart) SetTickFormatType(tickFormatType string) {
+	if tickFormatType == "" {
+		r.TickFormatType = TickFormatTypeDateTime
+	} else {
+		r.TickFormatType = tickFormatType
+	}
+}
+
 type FigSettingOpt func(b *grob.Fig)
 
-func layoutX(title string) *grob.Fig {
+func (r *KlineChart) LayoutObj(title string) *grob.Fig {
+	if r.TickFormatType == "" {
+		r.SetTickFormatType(TickFormatTypeDateTime)
+	}
 	return &grob.Fig{
 		Layout: &grob.Layout{
 			Title: &grob.LayoutTitle{
@@ -68,14 +97,14 @@ func layoutX(title string) *grob.Fig {
 					Visible: types.False,
 				},
 				Tickmode:   "auto",
-				Tickformat: "%Y-%m-%d %H:%M",
+				Tickformat: types.StringType(r.Settings.GetOrDefault("xaxis_tickformat", r.TickFormatType)),
 			},
 			XAxis2: &grob.LayoutXaxis{
 				Rangeslider: &grob.LayoutXaxisRangeslider{
 					Visible: types.False,
 				},
 				Tickmode:   "auto",
-				Tickformat: "%Y-%m-%d %H:%M",
+				Tickformat: types.StringType(r.Settings.GetOrDefault("xaxis2_tickformat", r.TickFormatType)),
 			},
 			// Yaxis: &grob.LayoutYaxis{
 			// 	// Tickformat:  ".6",
@@ -156,7 +185,7 @@ func (rb *KlineChart) AddMarker(idx int, name string, x *types.DataArrayType, y 
 }
 
 func (r *KlineChart) ObjInit(opts ...FigSettingOpt) *grob.Fig {
-	fig := layoutX(r.Title)
+	fig := r.LayoutObj(r.Title)
 	type tmp struct {
 		w      int
 		slices []types.Trace
