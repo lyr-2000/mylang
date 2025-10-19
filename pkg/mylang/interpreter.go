@@ -275,6 +275,24 @@ func (i *Interpreter) evalFunctionCall(fc *FunctionCall) interface{} {
 
 // evalLogicalAnd 实现逻辑 AND 运算
 func (i *Interpreter) evalLogicalAnd(left, right interface{}) interface{} {
+	// 处理数组模式
+	leftArr, leftIsArr := left.([]float64)
+	rightArr, rightIsArr := right.([]float64)
+	
+	if leftIsArr && rightIsArr {
+		// 两个都是数组，逐元素进行 AND 运算
+		return i.logicalAndArrays(leftArr, rightArr)
+	} else if leftIsArr {
+		// 左边是数组，右边是标量
+		rightBool := i.toBool(right)
+		return i.logicalAndArrayWithScalar(leftArr, rightBool)
+	} else if rightIsArr {
+		// 右边是数组，左边是标量
+		leftBool := i.toBool(left)
+		return i.logicalAndArrayWithScalar(rightArr, leftBool)
+	}
+	
+	// 标量模式
 	leftBool := i.toBool(left)
 	rightBool := i.toBool(right)
 	return leftBool && rightBool
@@ -282,6 +300,24 @@ func (i *Interpreter) evalLogicalAnd(left, right interface{}) interface{} {
 
 // evalLogicalOr 实现逻辑 OR 运算
 func (i *Interpreter) evalLogicalOr(left, right interface{}) interface{} {
+	// 处理数组模式
+	leftArr, leftIsArr := left.([]float64)
+	rightArr, rightIsArr := right.([]float64)
+	
+	if leftIsArr && rightIsArr {
+		// 两个都是数组，逐元素进行 OR 运算
+		return i.logicalOrArrays(leftArr, rightArr)
+	} else if leftIsArr {
+		// 左边是数组，右边是标量
+		rightBool := i.toBool(right)
+		return i.logicalOrArrayWithScalar(leftArr, rightBool)
+	} else if rightIsArr {
+		// 右边是数组，左边是标量
+		leftBool := i.toBool(left)
+		return i.logicalOrArrayWithScalar(rightArr, leftBool)
+	}
+	
+	// 标量模式
 	leftBool := i.toBool(left)
 	rightBool := i.toBool(right)
 	return leftBool || rightBool
@@ -483,4 +519,72 @@ func (i *Interpreter) toFloat64(value interface{}) float64 {
 	default:
 		return 0
 	}
+}
+
+// logicalAndArrays 对两个数组进行逐元素 AND 运算
+func (i *Interpreter) logicalAndArrays(leftArr, rightArr []float64) []float64 {
+	minLen := len(leftArr)
+	if len(rightArr) < minLen {
+		minLen = len(rightArr)
+	}
+	
+	result := make([]float64, minLen)
+	for idx := 0; idx < minLen; idx++ {
+		leftBool := leftArr[idx] != 0
+		rightBool := rightArr[idx] != 0
+		if leftBool && rightBool {
+			result[idx] = 1
+		} else {
+			result[idx] = 0
+		}
+	}
+	return result
+}
+
+// logicalAndArrayWithScalar 对数组和标量进行 AND 运算
+func (i *Interpreter) logicalAndArrayWithScalar(arr []float64, scalar bool) []float64 {
+	result := make([]float64, len(arr))
+	for idx := 0; idx < len(arr); idx++ {
+		arrBool := arr[idx] != 0
+		if arrBool && scalar {
+			result[idx] = 1
+		} else {
+			result[idx] = 0
+		}
+	}
+	return result
+}
+
+// logicalOrArrays 对两个数组进行逐元素 OR 运算
+func (i *Interpreter) logicalOrArrays(leftArr, rightArr []float64) []float64 {
+	minLen := len(leftArr)
+	if len(rightArr) < minLen {
+		minLen = len(rightArr)
+	}
+	
+	result := make([]float64, minLen)
+	for idx := 0; idx < minLen; idx++ {
+		leftBool := leftArr[idx] != 0
+		rightBool := rightArr[idx] != 0
+		if leftBool || rightBool {
+			result[idx] = 1
+		} else {
+			result[idx] = 0
+		}
+	}
+	return result
+}
+
+// logicalOrArrayWithScalar 对数组和标量进行 OR 运算
+func (i *Interpreter) logicalOrArrayWithScalar(arr []float64, scalar bool) []float64 {
+	result := make([]float64, len(arr))
+	for idx := 0; idx < len(arr); idx++ {
+		arrBool := arr[idx] != 0
+		if arrBool || scalar {
+			result[idx] = 1
+		} else {
+			result[idx] = 0
+		}
+	}
+	return result
 }
