@@ -5,6 +5,8 @@ import (
 	"io"
 	stdlog "log"
 	// "os"
+	
+	"github.com/lyr-2000/mylang/pkg/extensions/indicators"
 )
 
 var (
@@ -169,9 +171,9 @@ func (i *Interpreter) evalBinaryExpression(be *BinaryExpression) interface{} {
 		}
 	}
 
-	// 处理数组和浮点数的操作
-	leftArr, larrOk := left.([]float64)
-	rightArr, rarrOk := right.([]float64)
+	// 处理数组和浮点数的操作，兼容 Series 类型
+	leftArr, larrOk := i.toFloat64Slice(left)
+	rightArr, rarrOk := i.toFloat64Slice(right)
 
 	if larrOk && rok { // 数组与浮点数操作
 		result := make([]float64, len(leftArr))
@@ -275,9 +277,9 @@ func (i *Interpreter) evalFunctionCall(fc *FunctionCall) interface{} {
 
 // evalLogicalAnd 实现逻辑 AND 运算
 func (i *Interpreter) evalLogicalAnd(left, right interface{}) interface{} {
-	// 处理数组模式
-	leftArr, leftIsArr := left.([]float64)
-	rightArr, rightIsArr := right.([]float64)
+	// 处理数组模式，兼容 Series 类型
+	leftArr, leftIsArr := i.toFloat64Slice(left)
+	rightArr, rightIsArr := i.toFloat64Slice(right)
 	
 	if leftIsArr && rightIsArr {
 		// 两个都是数组，逐元素进行 AND 运算
@@ -300,9 +302,9 @@ func (i *Interpreter) evalLogicalAnd(left, right interface{}) interface{} {
 
 // evalLogicalOr 实现逻辑 OR 运算
 func (i *Interpreter) evalLogicalOr(left, right interface{}) interface{} {
-	// 处理数组模式
-	leftArr, leftIsArr := left.([]float64)
-	rightArr, rightIsArr := right.([]float64)
+	// 处理数组模式，兼容 Series 类型
+	leftArr, leftIsArr := i.toFloat64Slice(left)
+	rightArr, rightIsArr := i.toFloat64Slice(right)
 	
 	if leftIsArr && rightIsArr {
 		// 两个都是数组，逐元素进行 OR 运算
@@ -346,6 +348,14 @@ func (i *Interpreter) toBool(value interface{}) bool {
 			}
 		}
 		return false
+	case indicators.Series:
+		// 对于 Series，检查是否有任何非零元素
+		for _, val := range v {
+			if val != 0 {
+				return true
+			}
+		}
+		return false
 	default:
 		return true
 	}
@@ -353,9 +363,9 @@ func (i *Interpreter) toBool(value interface{}) bool {
 
 // evalComparison 实现比较运算
 func (i *Interpreter) evalComparison(left, right interface{}, operator string) interface{} {
-	// 处理数组比较
-	leftArr, leftIsArr := left.([]float64)
-	rightArr, rightIsArr := right.([]float64)
+	// 处理数组比较，兼容 Series 类型
+	leftArr, leftIsArr := i.toFloat64Slice(left)
+	rightArr, rightIsArr := i.toFloat64Slice(right)
 	
 	if leftIsArr && rightIsArr {
 		// 两个都是数组，逐元素比较
@@ -493,6 +503,22 @@ func (i *Interpreter) compareArrayWithScalar(arr []float64, scalar float64, oper
 	return result
 }
 
+// toFloat64Slice 将值转换为 []float64 切片，兼容 Series 类型
+func (i *Interpreter) toFloat64Slice(value interface{}) ([]float64, bool) {
+	if value == nil {
+		return nil, false
+	}
+	
+	switch v := value.(type) {
+	case []float64:
+		return v, true
+	case indicators.Series:
+		return []float64(v), true
+	default:
+		return nil, false
+	}
+}
+
 // toFloat64 将值转换为浮点数
 func (i *Interpreter) toFloat64(value interface{}) float64 {
 	if value == nil {
@@ -514,6 +540,11 @@ func (i *Interpreter) toFloat64(value interface{}) float64 {
 	case []float64:
 		if len(v) > 0 {
 			return v[0] // 取数组第一个元素
+		}
+		return 0
+	case indicators.Series:
+		if len(v) > 0 {
+			return v[0] // 取 Series 第一个元素
 		}
 		return 0
 	default:

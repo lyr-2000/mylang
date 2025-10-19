@@ -62,8 +62,19 @@ MA55:MA(CLOSE,55);
 MA144:MA(CLOSE,144);
 RSI$G2:RSI(CLOSE,14);
 VOL22:MA(VOLUME,22)
+ZTPPrice:ZTPRICE(C,0.1)
+涨停:=C>=ZTPRICE(REF(C,1),0.1);
+
+去除:=1
+ZTPPrice:ZTPRICE(C,0.1)
+涨停:=C>=ZTPRICE(REF(C,1),0.1);
+前天涨停:=REF(涨停,2);
+昨天阴线:=REF(C,1)<REF(O,1);
+碰涨停:=H>=ZTPRICE(REF(C,1),0.1);
+N字涨停板$m:=前天涨停 AND 昨天阴线 AND 碰涨停 AND 去除;
 
 	`)
+	executor.PrintProgramTree()
 	executor.ExecuteProgram()
 	if executor.Err != nil {
 		log.Panic(executor.Err)
@@ -84,7 +95,14 @@ VOL22:MA(VOLUME,22)
 			Color: types.ArrayOKValue(types.UseColor("red")),
 			Size:  types.ArrayOKValue(types.N(10)),
 		})
-
+	
+	
+	xxx := executor.GetFloat64Array("N字涨停板$m")
+	_ = xxx
+	xxx = executor.GetFloat64Array("碰涨停")
+	_ = xxx
+	xxx = executor.GetFloat64Array("昨天阴线")
+	_ = xxx
 	for varName := range executor.GetDrawingVariables() {
 		if varName == "RSI$G2" || varName == "VOL22" {
 			continue

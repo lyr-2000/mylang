@@ -1,6 +1,9 @@
 package mylang
 
-import "github.com/spf13/cast"
+import (
+	"github.com/lyr-2000/mylang/pkg/extensions/indicators"
+	"github.com/spf13/cast"
+)
 
 // MylangInterpreter 代表麦语言解释器的接口
 type MylangInterpreter struct {
@@ -76,6 +79,10 @@ func ToSlice(b any) ([]any, bool) {
 	slf, ok := b.([]float64)
 	if ok {
 		return copySlice(slf), true
+	}
+	slf2,ok := b.(indicators.Series) 
+	if ok {
+		return copySlice[float64](slf2),true
 	}
 	d := cast.ToSlice(b)
 	return d, true

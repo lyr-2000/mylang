@@ -6,6 +6,7 @@ import (
 	"github.com/lyr-2000/mylang/pkg/mylang"
 	"io"
 	"log"
+	"strings"
 
 	"github.com/spf13/cast"
 )
@@ -105,6 +106,88 @@ func (b *MaiExecutor) SetVarNameAlias(alias map[string]string) {
 func (m *MaiExecutor) CompileCode(code string) error {
 	m.PreCompiledProgram = m.MylangInterpreter.CompileCode(code)
 	return nil
+}
+
+func (m *MaiExecutor) PrintProgramTree() {
+	if m.PreCompiledProgram == nil {
+		fmt.Println("PreCompiledProgram is nil")
+		return
+	}
+	
+	fmt.Println("=== PreCompiledProgram AST ===")
+	fmt.Printf("Total statements: %d\n", len(m.PreCompiledProgram.Statements))
+	fmt.Println()
+	
+	for i, stmt := range m.PreCompiledProgram.Statements {
+		fmt.Printf("Statement %d:\n", i)
+		m.printStatement(stmt, 0)
+		fmt.Println()
+	}
+	fmt.Println("=== End of AST ===")
+}
+
+func (m *MaiExecutor) printStatement(stmt mylang.Statement, indent int) {
+	indentStr := strings.Repeat("  ", indent)
+	
+	switch s := stmt.(type) {
+	case *mylang.AssignmentStatement:
+		fmt.Printf("%sAssignmentStatement:\n", indentStr)
+		fmt.Printf("%s  Name: %s\n", indentStr, s.Name.String())
+		fmt.Printf("%s  IsDrawingVar: %t\n", indentStr, s.IsDrawingVar)
+		fmt.Printf("%s  Value:\n", indentStr)
+		m.printExpression(s.Value, indent+2)
+		
+	case *mylang.ExpressionStatement:
+		fmt.Printf("%sExpressionStatement:\n", indentStr)
+		fmt.Printf("%s  Expression:\n", indentStr)
+		m.printExpression(s.Expression, indent+2)
+		
+	default:
+		fmt.Printf("%sUnknown statement type: %T\n", indentStr, stmt)
+		fmt.Printf("%s  String: %s\n", indentStr, stmt.String())
+	}
+}
+
+func (m *MaiExecutor) printExpression(expr mylang.Expression, indent int) {
+	if expr == nil {
+		fmt.Printf("%s<nil>\n", strings.Repeat("  ", indent))
+		return
+	}
+	
+	indentStr := strings.Repeat("  ", indent)
+	
+	switch e := expr.(type) {
+	case *mylang.Identifier:
+		fmt.Printf("%sIdentifier: %s\n", indentStr, e.Value)
+		
+	case *mylang.NumberLiteral:
+		fmt.Printf("%sNumberLiteral: %f\n", indentStr, e.Value)
+		
+	case *mylang.StringLiteral:
+		fmt.Printf("%sStringLiteral: %s\n", indentStr, e.Value)
+		
+	case *mylang.BinaryExpression:
+		fmt.Printf("%sBinaryExpression:\n", indentStr)
+		fmt.Printf("%s  Operator: %s\n", indentStr, e.Operator)
+		fmt.Printf("%s  Left:\n", indentStr)
+		m.printExpression(e.Left, indent+2)
+		fmt.Printf("%s  Right:\n", indentStr)
+		m.printExpression(e.Right, indent+2)
+		
+	case *mylang.FunctionCall:
+		fmt.Printf("%sFunctionCall:\n", indentStr)
+		fmt.Printf("%s  Function:\n", indentStr)
+		m.printExpression(e.Function, indent+2)
+		fmt.Printf("%s  Arguments (%d):\n", indentStr, len(e.Arguments))
+		for i, arg := range e.Arguments {
+			fmt.Printf("%s    [%d]:\n", indentStr, i)
+			m.printExpression(arg, indent+3)
+		}
+		
+	default:
+		fmt.Printf("%sUnknown expression type: %T\n", indentStr, expr)
+		fmt.Printf("%s  String: %s\n", indentStr, expr.String())
+	}
 }
 
 func (m *MaiExecutor) ExecuteProgram() error {

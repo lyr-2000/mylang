@@ -248,6 +248,7 @@ func (p *Parser) parseAssignmentStatement() *AssignmentStatement {
 	p.nextToken()
 	stmt.Value = p.parseExpression(LOWEST)
 
+	// 跳过分号（如果存在）
 	if p.peekTok.Type == TokenSemicolon {
 		p.nextToken()
 	}
@@ -269,10 +270,12 @@ func (p *Parser) parseExpression(precedence int) Expression {
 	if p.peekTok.Type == TokenLParen {
 		Logger.Println("Function call parsing, peek token:", p.peekTok.Literal)
 		p.nextToken()
-		return p.parseFunctionCall(leftExp)
+		leftExp = p.parseFunctionCall(leftExp)
+		Logger.Println("Parsed function call, continuing with infix parsing")
 	}
 
-	for p.peekTok.Type != TokenSemicolon && p.peekTok.Type != TokenRParen && precedence < p.peekPrecedence() {
+	// 继续解析二元表达式，直到遇到分号、右括号或EOF，或者优先级不够
+	for p.peekTok.Type != TokenSemicolon && p.peekTok.Type != TokenRParen && p.peekTok.Type != TokenEOF && precedence < p.peekPrecedence() {
 		Logger.Println("Infix parsing, peek token:", p.peekTok.Literal)
 		infix := p.parseInfix(leftExp, p.peekTok.Type)
 		if infix == nil {
