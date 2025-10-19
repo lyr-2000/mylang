@@ -1345,6 +1345,134 @@ func LON(CLOSE, HIGH, LOW, VOL Series) (Series, Series) {
 	LONMA := MA(LON, 10)
 	return LON, LONMA
 }
+func CopySlice(Slice Series) Series {
+	result := make(Series, len(Slice))
+	copy(result, Slice)
+	return result
+}
+
+func DTPRICE(Slice Series, n float64) Series {
+	// for i
+	w := CopySlice(Slice)
+	for i := 0; i < len(w); i++ {
+		w[i] = w[i] * (1 - n)
+	}
+	return w
+}
+func ZTPRICE(Slice Series, n float64) Series {
+	// for i
+	w := CopySlice(Slice)
+	for i := 0; i < len(w); i++ {
+		w[i] = w[i] * (1 + n)
+	}
+	return w
+}
+
+// 全局函数映射表
+var functionMap map[string]any
+
+// init 初始化函数映射表
+func init() {
+	functionMap = map[string]any{
+		"DTPRICE": DTPRICE,
+		"ZTPRICE": ZTPRICE,
+		"IF":      IF,
+		// 0级核心工具函数
+		"RD":      RD,
+		"RET":     RET,
+		"ABS":     ABS,
+		"LN":      LN,
+		"POW":     POW,
+		"SQRT":    SQRT,
+		"SIN":     SIN,
+		"COS":     COS,
+		"TAN":     TAN,
+		"MAX":     MAX,
+		"MIN":     MIN,
+		"REF":     REF,
+		"DIFF":    DIFF,
+		"STD":     STD,
+		"SUM":     SUM,
+		"MA":      MA,
+		"EMA":     EMA,
+		"SMA":     SMA,
+		"WMA":     WMA,
+		"DMA":     DMA,
+		"HHV":     HHV,
+		"LLV":     LLV,
+		"AVEDEV":  AVEDEV,
+		"SLOPE":   SLOPE,
+		"FORCAST": FORCAST,
+
+		// 1级应用层函数
+		"COUNT":      COUNT,
+		"EVERY":      EVERY,
+		"EXIST":      EXIST,
+		"CROSS":      CROSS,
+		"LONGCROSS":  LONGCROSS,
+		"BARSLAST":   BARSLAST,
+		"VALUEWHEN":  VALUEWHEN,
+		"BETWEEN":    BETWEEN,
+		"FILTER":     FILTER,
+		"LAST":       LAST,
+		"BARSSINCEN": BARSSINCEN,
+		"HHVBARS":    HHVBARS,
+		"LLVBARS":    LLVBARS,
+		"TOPRANGE":   TOPRANGE,
+		"LOWRANGE":   LOWRANGE,
+
+		// 序列运算函数
+		"ADD": ADD,
+		"SUB": SUB,
+		"MUL": MUL,
+		"DIV": DIV,
+
+		// 比较函数
+		"GreaterThan":        GreaterThan,
+		"LessThan":           LessThan,
+		"LessThanOrEqual":    LessThanOrEqual,
+		"Equal":              Equal,
+		"NotEqual":           NotEqual,
+		"GreaterThanOrEqual": GreaterThanOrEqual,
+
+		// 2级技术指标函数
+		"MACD":  MACD,
+		"RSI":   RSI,
+		"BOLL":  BOLL,
+		"KDJ":   KDJ,
+		"WR":    WR,
+		"BIAS":  BIAS,
+		"PSY":   PSY,
+		"CCI":   CCI,
+		"ATR":   ATR,
+		"BBI":   BBI,
+		"DMI":   DMI,
+		"TAQ":   TAQ,
+		"KTN":   KTN,
+		"TRIX":  TRIX,
+		"VR":    VR,
+		"CR":    CR,
+		"EMV":   EMV,
+		"DPO":   DPO,
+		"BRAR":  BRAR,
+		"DFMA":  DFMA,
+		"MTM":   MTM,
+		"MASS":  MASS,
+		"ROC":   ROC,
+		"EXPMA": EXPMA,
+		"OBV":   OBV,
+		"MFI":   MFI,
+		"ASI":   ASI,
+		"XSII":  XSII,
+
+		// 高级函数版本
+		"SAR":     SAR,
+		"TDX_SAR": TDX_SAR,
+		"QRR":     QRR,
+		"SHO":     SHO,
+		"LON":     LON,
+	}
+}
 
 // CallIndicatorByReflection 通过反射直接调用原始函数
 func CallIndicatorByReflection(funcName string, args []any) (any, error) {
@@ -1360,182 +1488,10 @@ func CallIndicatorByReflection(funcName string, args []any) (any, error) {
 
 // getOriginalFunction 获取原始函数
 func getOriginalFunction(funcName string) any {
-	switch funcName {
-	// 0级核心工具函数
-	case "RD":
-		return RD
-	case "RET":
-		return RET
-	case "ABS":
-		return ABS
-	case "LN":
-		return LN
-	case "POW":
-		return POW
-	case "SQRT":
-		return SQRT
-	case "SIN":
-		return SIN
-	case "COS":
-		return COS
-	case "TAN":
-		return TAN
-	case "MAX":
-		return MAX
-	case "MIN":
-		return MIN
-	case "REF":
-		return REF
-	case "DIFF":
-		return DIFF
-	case "STD":
-		return STD
-	case "SUM":
-		return SUM
-	case "MA":
-		return MA
-	case "EMA":
-		return EMA
-	case "SMA":
-		return SMA
-	case "WMA":
-		return WMA
-	case "DMA":
-		return DMA
-	case "HHV":
-		return HHV
-	case "LLV":
-		return LLV
-	case "AVEDEV":
-		return AVEDEV
-	case "SLOPE":
-		return SLOPE
-	case "FORCAST":
-		return FORCAST
-
-	// 1级应用层函数
-	case "COUNT":
-		return COUNT
-	case "EVERY":
-		return EVERY
-	case "EXIST":
-		return EXIST
-	case "CROSS":
-		return CROSS
-	case "LONGCROSS":
-		return LONGCROSS
-	case "BARSLAST":
-		return BARSLAST
-	case "VALUEWHEN":
-		return VALUEWHEN
-	case "BETWEEN":
-		return BETWEEN
-	case "FILTER":
-		return FILTER
-	case "LAST":
-		return LAST
-	case "BARSSINCEN":
-		return BARSSINCEN
-	case "HHVBARS":
-		return HHVBARS
-	case "LLVBARS":
-		return LLVBARS
-	case "TOPRANGE":
-		return TOPRANGE
-	case "LOWRANGE":
-		return LOWRANGE
-
-	// 序列运算函数
-	case "ADD":
-		return ADD
-	case "SUB":
-		return SUB
-	case "MUL":
-		return MUL
-	case "DIV":
-		return DIV
-
-	// 比较函数
-	case "GreaterThan":
-		return GreaterThan
-	case "LessThan":
-		return LessThan
-	case "Equal":
-		return Equal
-
-	// 2级技术指标函数
-	case "MACD":
-		return MACD
-	case "RSI":
-		return RSI
-	case "BOLL":
-		return BOLL
-	case "KDJ":
-		return KDJ
-	case "WR":
-		return WR
-	case "BIAS":
-		return BIAS
-	case "PSY":
-		return PSY
-	case "CCI":
-		return CCI
-	case "ATR":
-		return ATR
-	case "BBI":
-		return BBI
-	case "DMI":
-		return DMI
-	case "TAQ":
-		return TAQ
-	case "KTN":
-		return KTN
-	case "TRIX":
-		return TRIX
-	case "VR":
-		return VR
-	case "CR":
-		return CR
-	case "EMV":
-		return EMV
-	case "DPO":
-		return DPO
-	case "BRAR":
-		return BRAR
-	case "DFMA":
-		return DFMA
-	case "MTM":
-		return MTM
-	case "MASS":
-		return MASS
-	case "ROC":
-		return ROC
-	case "EXPMA":
-		return EXPMA
-	case "OBV":
-		return OBV
-	case "MFI":
-		return MFI
-	case "ASI":
-		return ASI
-	case "XSII":
-		return XSII
-
-	// 高级函数版本
-	case "SAR":
-		return SAR
-	case "TDX_SAR":
-		return TDX_SAR
-	case "QRR":
-		return QRR
-	case "SHO":
-		return SHO
-	case "LON":
-		return LON
-
-	default:
-		return nil
+	if fn, exists := functionMap[funcName]; exists {
+		return fn
 	}
+	return nil
 }
 
 // callFunctionByReflection 通过反射调用函数
@@ -1588,40 +1544,15 @@ func callFunctionByReflection(fn any, args []any) (any, error) {
 // 初始化指标函数映射
 
 func GetAllFuncNames() []string {
-	return []string{
-		// Series 类型方法
-		"Len", "At", "Last", "Slice",
-
-		// 0级：核心工具函数
-		"RD", "RET", "ABS", "LN", "POW", "SQRT", "SIN", "COS", "TAN",
-		"MAX", "MIN", "IF", "REF", "DIFF", "STD", "SUM", "MA", "EMA",
-		"SMA", "WMA", "DMA", "HHV", "LLV",
-
-		// 1级：应用层函数
-		"COUNT", "EVERY", "EXIST", "CROSS",
-
-		// 2级：技术指标函数
-		"MACD", "KDJ", "RSI", "BOLL", "WR", "BIAS", "PSY", "CCI",
-		"ATR", "BBI", "DMI", "TAQ", "KTN", "TRIX", "VR", "CR",
-		"EMV", "DPO", "BRAR", "DFMA", "MTM", "MASS", "ROC",
-		"EXPMA", "OBV", "MFI", "ASI", "XSII",
-
-		// 序列运算函数
-		"ADD", "SUB", "MUL", "DIV", "AVEDEV",
-
-		// 比较函数
-		"GreaterThan", "LessThan", "LessThanOrEqual", "Equal",
-		"NotEqual", "GreaterThanOrEqual",
-
-		// 高级函数
-		"SLOPE", "FORCAST", "BARSLAST", "VALUEWHEN", "BETWEEN",
-		"LONGCROSS", "FILTER", "LAST", "BARSSINCEN", "HHVBARS",
-		"LLVBARS", "TOPRANGE", "LOWRANGE",
-
-		// 高级函数版本
-		"SAR", "TDX_SAR", "QRR", "SHO", "LON",
-
-		// 反射相关函数
-		// "CallIndicatorByReflection", "getOriginalFunction", "callFunctionByReflection",
+	// 从 functionMap 中获取所有函数名
+	funcNames := make([]string, 0, len(functionMap))
+	for funcName := range functionMap {
+		funcNames = append(funcNames, funcName)
 	}
+
+	// 添加 Series 类型方法（这些不在 functionMap 中）
+	seriesMethods := []string{"Len", "At", "Last", "Slice"}
+	funcNames = append(funcNames, seriesMethods...)
+
+	return funcNames
 }

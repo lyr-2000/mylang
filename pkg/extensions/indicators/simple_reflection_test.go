@@ -5,6 +5,15 @@ import (
 	"testing"
 )
 
+
+func Test_series(t *testing.T) {
+	var b = []float64{1,1,1,1}
+	d := NewSeries(b)
+	d[0] = 3
+
+	fmt.Println(b)
+}
+
 func TestSimpleReflectionExample(t *testing.T) {
 	// 创建测试数据
 	close := NewSeries([]float64{100, 102, 101, 103, 105, 104, 106, 108, 107, 109})

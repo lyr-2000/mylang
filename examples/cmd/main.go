@@ -2,6 +2,8 @@ package main
 
 import (
 	"fmt"
+	"log"
+
 	"github.com/lyr-2000/mylang/pkg/mylang"
 )
 
@@ -46,6 +48,11 @@ func main() {
 		fmt.Println("LLV result:", minVal)
 		return minVal
 	})
+	
+	interp.RegisterVariable("NAMELIKE",func(args []interface{}) interface{} {
+		log.Printf("Namelike args: %v", args)
+		return false
+	})
 
 	interp.RegisterFunction("ADD", func(args []interface{}) interface{} {
 		if len(args) != 2 {
@@ -67,8 +74,27 @@ func main() {
 
 	// 执行麦语言代码 - 测试画图赋值
 	code := `
-	B:ADD(CLOSE,1)
-	C:=ADD(CLOSE,2)
+S1:=IF(NAMELIKE('S'),0,1);
+S2:=IF(NAMELIKE('*'),0,1);
+S4:=IF(INBLOCK('科创板'),0,1);
+S5:=IF(NAMELIKE('C'),0,1);
+S6:=IF(INBLOCK('创业板'),0,1);
+S7:=IF(INBLOCK('北证50'),0,1);
+去除:=S1 AND S2 AND S4 AND S5 AND S6 AND S7;
+a:=1
+b:=2
+c:a>b AND b=0
+d:b=2
+xx:HIGH>CLOSE
+xy:HIGH<CLOSE
+xz:HIGH=CLOSE
+zy:HIGH!=CLOSE
+zz:HIGH<=CLOSE
+zzz:HIGH>=CLOSE
+zzzz:HIGH==CLOSE
+zzzzz:HIGH!=CLOSE
+zzzzzz:HIGH<=CLOSE
+zzzzzzz:HIGH>=CLOSE
     `
 	result := interp.Execute(code)
 	fmt.Println("Result:", result)
@@ -91,6 +117,8 @@ func main() {
 	if len(drawingVars) > 0 {
 		for varName := range drawingVars {
 			fmt.Printf("- %s (is drawing variable: %t)\n", varName, interp.IsDrawingVariable(varName))
+			b,ok := interp.GetVariable(varName)
+			fmt.Printf("%s : %v varok=%v\n",varName,b,ok)
 		}
 	} else {
 		fmt.Println("No drawing variables found")

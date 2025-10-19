@@ -73,6 +73,9 @@ func (i *Interpreter) Eval(node Node) interface{} {
 	case *NumberLiteral:
 		Logger.Println("Evaluating number literal:", node.Value)
 		return node.Value
+	case *StringLiteral:
+		Logger.Println("Evaluating string literal:", node.Value)
+		return node.Value
 	case *Identifier:
 		Logger.Println("Evaluating identifier:", node.Value)
 		val := i.evalIdentifier(node)
@@ -120,6 +123,30 @@ func (i *Interpreter) evalBinaryExpression(be *BinaryExpression) interface{} {
 	left := i.Eval(be.Left)
 	right := i.Eval(be.Right)
 	Logger.Println("Binary expression, left:", left, "operator:", be.Operator, "right:", right)
+
+	// 处理逻辑运算
+	switch be.Operator {
+	case "AND":
+		return i.evalLogicalAnd(left, right)
+	case "OR", "or":
+		return i.evalLogicalOr(left, right)
+	}
+
+	// 处理比较运算
+	switch be.Operator {
+	case ">":
+		return i.evalComparison(left, right, ">")
+	case "<":
+		return i.evalComparison(left, right, "<")
+	case ">=":
+		return i.evalComparison(left, right, ">=")
+	case "<=":
+		return i.evalComparison(left, right, "<=")
+	case "==", "=":
+		return i.evalComparison(left, right, "==")
+	case "!=":
+		return i.evalComparison(left, right, "!=")
+	}
 
 	// 处理浮点数
 	leftVal, lok := left.(float64)
@@ -243,4 +270,216 @@ func (i *Interpreter) evalFunctionCall(fc *FunctionCall) interface{} {
 	}
 	Logger.Println("Function not callable:", function)
 	return nil
+}
+
+// evalLogicalAnd 实现逻辑 AND 运算
+func (i *Interpreter) evalLogicalAnd(left, right interface{}) interface{} {
+	leftBool := i.toBool(left)
+	rightBool := i.toBool(right)
+	return leftBool && rightBool
+}
+
+// evalLogicalOr 实现逻辑 OR 运算
+func (i *Interpreter) evalLogicalOr(left, right interface{}) interface{} {
+	leftBool := i.toBool(left)
+	rightBool := i.toBool(right)
+	return leftBool || rightBool
+}
+
+// toBool 将值转换为布尔值
+func (i *Interpreter) toBool(value interface{}) bool {
+	if value == nil {
+		return false
+	}
+	
+	switch v := value.(type) {
+	case bool:
+		return v
+	case float64:
+		return v != 0
+	case int:
+		return v != 0
+	case string:
+		return v != ""
+	case []float64:
+		// 对于数组，检查是否有任何非零元素
+		for _, val := range v {
+			if val != 0 {
+				return true
+			}
+		}
+		return false
+	default:
+		return true
+	}
+}
+
+// evalComparison 实现比较运算
+func (i *Interpreter) evalComparison(left, right interface{}, operator string) interface{} {
+	// 处理数组比较
+	leftArr, leftIsArr := left.([]float64)
+	rightArr, rightIsArr := right.([]float64)
+	
+	if leftIsArr && rightIsArr {
+		// 两个都是数组，逐元素比较
+		return i.compareArrays(leftArr, rightArr, operator)
+	} else if leftIsArr {
+		// 左边是数组，右边是标量
+		rightVal := i.toFloat64(right)
+		return i.compareArrayWithScalar(leftArr, rightVal, operator)
+	} else if rightIsArr {
+		// 右边是数组，左边是标量
+		leftVal := i.toFloat64(left)
+		return i.compareArrayWithScalar(rightArr, leftVal, operator)
+	}
+	
+	// 标量比较
+	leftVal := i.toFloat64(left)
+	rightVal := i.toFloat64(right)
+	
+	switch operator {
+	case ">":
+		return leftVal > rightVal
+	case "<":
+		return leftVal < rightVal
+	case ">=":
+		return leftVal >= rightVal
+	case "<=":
+		return leftVal <= rightVal
+	case "==", "=":
+		return leftVal == rightVal
+	case "!=":
+		return leftVal != rightVal
+	default:
+		return false
+	}
+}
+
+// compareArrays 比较两个数组
+func (i *Interpreter) compareArrays(leftArr, rightArr []float64, operator string) []float64 {
+	minLen := len(leftArr)
+	if len(rightArr) < minLen {
+		minLen = len(rightArr)
+	}
+	
+	result := make([]float64, minLen)
+	for i := 0; i < minLen; i++ {
+		switch operator {
+		case ">":
+			if leftArr[i] > rightArr[i] {
+				result[i] = 1
+			} else {
+				result[i] = 0
+			}
+		case "<":
+			if leftArr[i] < rightArr[i] {
+				result[i] = 1
+			} else {
+				result[i] = 0
+			}
+		case ">=":
+			if leftArr[i] >= rightArr[i] {
+				result[i] = 1
+			} else {
+				result[i] = 0
+			}
+		case "<=":
+			if leftArr[i] <= rightArr[i] {
+				result[i] = 1
+			} else {
+				result[i] = 0
+			}
+		case "==", "=":
+			if leftArr[i] == rightArr[i] {
+				result[i] = 1
+			} else {
+				result[i] = 0
+			}
+		case "!=":
+			if leftArr[i] != rightArr[i] {
+				result[i] = 1
+			} else {
+				result[i] = 0
+			}
+		default:
+			result[i] = 0
+		}
+	}
+	return result
+}
+
+// compareArrayWithScalar 比较数组和标量
+func (i *Interpreter) compareArrayWithScalar(arr []float64, scalar float64, operator string) []float64 {
+	result := make([]float64, len(arr))
+	for i := 0; i < len(arr); i++ {
+		switch operator {
+		case ">":
+			if arr[i] > scalar {
+				result[i] = 1
+			} else {
+				result[i] = 0
+			}
+		case "<":
+			if arr[i] < scalar {
+				result[i] = 1
+			} else {
+				result[i] = 0
+			}
+		case ">=":
+			if arr[i] >= scalar {
+				result[i] = 1
+			} else {
+				result[i] = 0
+			}
+		case "<=":
+			if arr[i] <= scalar {
+				result[i] = 1
+			} else {
+				result[i] = 0
+			}
+		case "==", "=":
+			if arr[i] == scalar {
+				result[i] = 1
+			} else {
+				result[i] = 0
+			}
+		case "!=":
+			if arr[i] != scalar {
+				result[i] = 1
+			} else {
+				result[i] = 0
+			}
+		default:
+			result[i] = 0
+		}
+	}
+	return result
+}
+
+// toFloat64 将值转换为浮点数
+func (i *Interpreter) toFloat64(value interface{}) float64 {
+	if value == nil {
+		return 0
+	}
+	
+	switch v := value.(type) {
+	case float64:
+		return v
+	case int:
+		return float64(v)
+	case bool:
+		if v {
+			return 1
+		}
+		return 0
+	case string:
+		return 0 // 字符串比较暂时返回0
+	case []float64:
+		if len(v) > 0 {
+			return v[0] // 取数组第一个元素
+		}
+		return 0
+	default:
+		return 0
+	}
 }

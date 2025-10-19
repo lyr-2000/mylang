@@ -53,6 +53,15 @@ type NumberLiteral struct {
 func (nl *NumberLiteral) expressionNode() {}
 func (nl *NumberLiteral) String() string  { return nl.Token.Literal }
 
+// StringLiteral 代表一个字符串字面量
+type StringLiteral struct {
+	Token Token
+	Value string
+}
+
+func (sl *StringLiteral) expressionNode() {}
+func (sl *StringLiteral) String() string  { return sl.Token.Literal }
+
 // BinaryExpression 代表一个二元表达式
 type BinaryExpression struct {
 	Token    Token
@@ -282,6 +291,8 @@ func (p *Parser) parsePrefix(tokenType TokenType) func() Expression {
 		return p.parseIdentifier
 	case TokenNumber:
 		return p.parseNumberLiteral
+	case TokenString:
+		return p.parseStringLiteral
 	case TokenLParen:
 		return p.parseGroupedExpression
 	}
@@ -290,7 +301,7 @@ func (p *Parser) parsePrefix(tokenType TokenType) func() Expression {
 
 func (p *Parser) parseInfix(left Expression, tokenType TokenType) func() Expression {
 	switch tokenType {
-	case TokenPlus, TokenMinus, TokenMultiply, TokenDivide:
+	case TokenPlus, TokenMinus, TokenMultiply, TokenDivide, TokenAnd, TokenOr, TokenGreaterThan, TokenLessThan, TokenGreaterEqual, TokenLessEqual, TokenEqual, TokenNotEqual:
 		return func() Expression { return p.parseBinaryExpression(left) }
 	}
 	return nil
@@ -321,6 +332,12 @@ func (p *Parser) parseNumberLiteral() Expression {
 		return nil
 	}
 	lit.Value = value
+	return lit
+}
+
+func (p *Parser) parseStringLiteral() Expression {
+	lit := &StringLiteral{Token: p.curTok}
+	lit.Value = p.curTok.Literal
 	return lit
 }
 
@@ -393,6 +410,9 @@ func (p *Parser) expectPeek(t TokenType) bool {
 const (
 	_ int = iota
 	LOWEST
+	OR
+	AND
+	COMPARISON
 	SUM
 	PRODUCT
 	PREFIX
@@ -401,6 +421,12 @@ const (
 
 func (p *Parser) peekPrecedence() int {
 	switch p.peekTok.Type {
+	case TokenOr:
+		return OR
+	case TokenAnd:
+		return AND
+	case TokenGreaterThan, TokenLessThan, TokenGreaterEqual, TokenLessEqual, TokenEqual, TokenNotEqual:
+		return COMPARISON
 	case TokenPlus, TokenMinus:
 		return SUM
 	case TokenMultiply, TokenDivide:
@@ -413,6 +439,12 @@ func (p *Parser) peekPrecedence() int {
 
 func (p *Parser) curPrecedence() int {
 	switch p.curTok.Type {
+	case TokenOr:
+		return OR
+	case TokenAnd:
+		return AND
+	case TokenGreaterThan, TokenLessThan, TokenGreaterEqual, TokenLessEqual, TokenEqual, TokenNotEqual:
+		return COMPARISON
 	case TokenPlus, TokenMinus:
 		return SUM
 	case TokenMultiply, TokenDivide:

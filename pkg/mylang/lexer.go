@@ -20,6 +20,14 @@ const (
 	TokenComma
 	TokenAsterisk
 	TokenEqual
+	TokenAnd
+	TokenOr
+	TokenGreaterThan
+	TokenLessThan
+	TokenGreaterEqual
+	TokenLessEqual
+	TokenNotEqual
+	TokenString
 )
 
 // Token 代表一个令牌
@@ -101,14 +109,61 @@ func (l *Lexer) NextToken() Token {
 		tok = Token{Type: TokenComma, Literal: string(l.ch)}
 		l.readChar()
 	case '=':
-		tok = Token{Type: TokenEqual, Literal: string(l.ch)}
+		if l.peekChar() == '=' {
+			// 处理 == 比较
+			l.readChar()
+			tok = Token{Type: TokenEqual, Literal: "=="}
+		} else {
+			tok = Token{Type: TokenEqual, Literal: string(l.ch)}
+		}
 		l.readChar()
+	case '>':
+		if l.peekChar() == '=' {
+			// 处理 >= 比较
+			l.readChar()
+			tok = Token{Type: TokenGreaterEqual, Literal: ">="}
+		} else {
+			tok = Token{Type: TokenGreaterThan, Literal: string(l.ch)}
+		}
+		l.readChar()
+	case '<':
+		if l.peekChar() == '=' {
+			// 处理 <= 比较
+			l.readChar()
+			tok = Token{Type: TokenLessEqual, Literal: "<="}
+		} else if l.peekChar() == '>' {
+			// 处理 != 比较
+			l.readChar()
+			tok = Token{Type: TokenNotEqual, Literal: "!="}
+		} else {
+			tok = Token{Type: TokenLessThan, Literal: string(l.ch)}
+		}
+		l.readChar()
+	case '!':
+		if l.peekChar() == '=' {
+			// 处理 != 比较
+			l.readChar()
+			tok = Token{Type: TokenNotEqual, Literal: "!="}
+		} else {
+			tok = Token{Type: TokenError, Literal: string(l.ch)}
+		}
+		l.readChar()
+	case '\'':
+		tok.Type = TokenString
+		tok.Literal = l.readString()
+		return tok
 	case 0:
 		tok = Token{Type: TokenEOF, Literal: ""}
 	default:
 		if isLetter(l.ch) {
 			tok.Literal = l.readIdentifier()
 			tok.Type = TokenIdentifier
+			// 检查是否为关键字
+			if tok.Literal == "AND" {
+				tok.Type = TokenAnd
+			} else if tok.Literal == "OR" || tok.Literal == "or" {
+				tok.Type = TokenOr
+			}
 			return tok
 		} else if isDigit(l.ch) {
 			tok.Type = TokenNumber
@@ -142,6 +197,21 @@ func (l *Lexer) readNumber() string {
 		l.readChar()
 	}
 	return l.input[pos:l.pos]
+}
+
+func (l *Lexer) readString() string {
+	pos := l.pos + 1 // 跳过开始的单引号
+	for {
+		l.readChar()
+		if l.ch == '\'' || l.ch == 0 {
+			break
+		}
+	}
+	// 如果遇到结束的单引号，跳过它
+	if l.ch == '\'' {
+		l.readChar()
+	}
+	return l.input[pos:l.pos-1] // 去掉结束的单引号
 }
 
 func isLetter(ch byte) bool {
