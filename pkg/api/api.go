@@ -12,6 +12,7 @@ import (
 
 type MaiExecutor struct {
 	*mylang.MylangInterpreter
+	PreCompiledProgram *mylang.Program //if not nil ,use it to execute the program
 }
 
 func (m *MaiExecutor) SetCustomVariableGetter(getter func(name string) any) {
@@ -64,12 +65,25 @@ func (b *MaiExecutor) SetVarNameAlias(alias map[string]string) {
 
 }
 
-// func (m *MaiExecutor) RegisterFunc(name string, fn func([]interface{}) interface{}) {
-// 	m.RegisterFunction(name, fn)
-// }
+func (m *MaiExecutor) CompileCode(code string) error {
+	m.PreCompiledProgram = m.MylangInterpreter.CompileCode(code)
+	return nil
+}
+
+func (m *MaiExecutor) ExecuteProgram() error {
+	if m.PreCompiledProgram == nil {
+		return fmt.Errorf("PreCompiledProgram is nil")
+	}
+	m.MylangInterpreter.ExecuteProgram(m.PreCompiledProgram)
+	return m.Err
+}
+
 
 // RunCode 执行麦语言代码，并返回执行结果字符串
 func (m *MaiExecutor) RunCode(code string) error {
+	if m.PreCompiledProgram != nil {
+		log.Panicf("MaiExecutor is already compiled ,use ExecuteProgram() to execute the program")
+	}
 	// 假设这里可以调用核心麦语言解释器，实际应用中你需要替换为正确调用
 	// 例如: result, err := mytt.RunMaiCode(code)
 	m.Execute(code)

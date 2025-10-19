@@ -9,6 +9,12 @@ type MylangInterpreter struct {
 	Err    error
 }
 
+func (mi *MylangInterpreter) Reset() {
+	mi.Env = NewEnvironment()
+	mi.Interp = NewInterpreter(mi.Env)
+	mi.Err = nil
+}
+
 // NewMylangInterpreter 创建一个新的麦语言解释器
 func NewMylangInterpreter() *MylangInterpreter {
 	env := NewEnvironment()
@@ -24,6 +30,18 @@ func (mi *MylangInterpreter) RegisterVariable(name string, value interface{}) {
 // RegisterFunction 注册一个用户自定义函数到解释器
 func (mi *MylangInterpreter) RegisterFunction(name string, fn func([]interface{}) interface{}) {
 	mi.Env.Set(name, fn)
+}
+
+// CompileCode 预编译麦语言代码，返回语法树
+func (mi *MylangInterpreter) CompileCode(code string) *Program {
+	lexer := NewLexer(code)
+	parser := NewParser(lexer)
+	return parser.ParseProgram()
+}
+
+// ExecuteProgram 执行语法树
+func (mi *MylangInterpreter) ExecuteProgram(program *Program) interface{} {
+	return mi.Interp.Eval(program)
 }
 
 // Execute 执行麦语言代码

@@ -1,6 +1,7 @@
 package mylang
 
 import (
+	"strings"
 	"unicode"
 	"unicode/utf8"
 )
@@ -224,7 +225,7 @@ func (l *Lexer) readString() string {
 	if l.ch == '\'' {
 		l.readChar()
 	}
-	return l.input[pos:l.pos-1] // 去掉结束的单引号
+	return l.input[pos : l.pos-1] // 去掉结束的单引号
 }
 
 func isLetter(ch rune) bool {
@@ -233,4 +234,30 @@ func isLetter(ch rune) bool {
 
 func isDigit(ch rune) bool {
 	return unicode.IsDigit(ch)
+}
+
+// TrimComment 去除代码中的注释
+func TrimComment(code string) string {
+	if !strings.Contains(code, "{") {
+		return code
+	}
+	// 注释: { 括号里面是注释内容 }
+	var out strings.Builder
+	inComment := byte(0)
+	for i := 0; i < len(code); i++ {
+		ch := code[i]
+		if inComment == 0 {
+			if ch == '{' {
+				inComment += 1
+			} else {
+				out.WriteByte(ch)
+			}
+		} else {
+			if ch == '}' {
+				inComment -= 1
+			}
+			// else skip characters inside comment
+		}
+	}
+	return out.String()
 }
