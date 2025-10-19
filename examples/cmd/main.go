@@ -2,7 +2,7 @@ package main
 
 import (
 	"fmt"
-	"github.com/lyr2000/mylang/pkg/mylang"
+	"github.com/lyr-2000/mylang/pkg/mylang"
 )
 
 func main() {

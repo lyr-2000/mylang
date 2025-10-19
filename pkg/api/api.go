@@ -2,8 +2,8 @@ package api
 
 import (
 	"fmt"
-	"github.com/lyr2000/mylang/pkg/extensions/indicators"
-	"github.com/lyr2000/mylang/pkg/mylang"
+	"github.com/lyr-2000/mylang/pkg/extensions/indicators"
+	"github.com/lyr-2000/mylang/pkg/mylang"
 	"io"
 	"log"
 

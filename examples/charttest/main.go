@@ -7,8 +7,8 @@ import (
 
 	grob "github.com/MetalBlueberry/go-plotly/generated/v2.34.0/graph_objects"
 	"github.com/MetalBlueberry/go-plotly/pkg/types"
-	"github.com/lyr2000/mylang/pkg/api"
-	"github.com/lyr2000/mylang/pkg/extensions/tradingcharts/charts"
+	"github.com/lyr-2000/mylang/pkg/api"
+	"github.com/lyr-2000/mylang/pkg/extensions/tradingcharts/charts"
 )
 
 type Klinedef struct {

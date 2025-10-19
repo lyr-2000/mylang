@@ -1,4 +1,4 @@
-module github.com/lyr2000/mylang
+module github.com/lyr-2000/mylang
 
 go 1.25.1
 
