@@ -295,8 +295,6 @@ func (p *Parser) parsePrefix(tokenType TokenType) func() Expression {
 		return p.parseStringLiteral
 	case TokenLParen:
 		return p.parseGroupedExpression
-	case TokenDollar:
-		return p.parseDollarIdentifier
 	}
 	return nil
 }
@@ -327,17 +325,6 @@ func (p *Parser) parseIdentifier() Expression {
 	return &Identifier{Token: p.curTok, Value: p.curTok.Literal}
 }
 
-func (p *Parser) parseDollarIdentifier() Expression {
-	// 消费 $ 符号
-	p.nextToken()
-	// 下一个 token 应该是标识符
-	if p.curTok.Type != TokenIdentifier {
-		Logger.Println("Expected identifier after $")
-		return nil
-	}
-	// 创建带 $ 前缀的标识符
-	return &Identifier{Token: p.curTok, Value: "$" + p.curTok.Literal}
-}
 
 func (p *Parser) parseNumberLiteral() Expression {
 	lit := &NumberLiteral{Token: p.curTok}

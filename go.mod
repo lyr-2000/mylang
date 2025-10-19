@@ -12,4 +12,3 @@ require (
 	golang.org/x/sys v0.23.0 // indirect
 )
 
-// replace github.com/lyr-2000/mylang/pkg/extensions/tradingcharts/go-plotly => ./pkg/extensions/tradingcharts/go-plotly

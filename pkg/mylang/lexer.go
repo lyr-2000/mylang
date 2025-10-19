@@ -101,9 +101,6 @@ func (l *Lexer) NextToken() Token {
 	case ')':
 		tok = Token{Type: TokenRParen, Literal: string(l.ch)}
 		l.readChar()
-	case '$':
-		tok = Token{Type: TokenDollar, Literal: string(l.ch)}
-		l.readChar()
 	case ';':
 		tok = Token{Type: TokenSemicolon, Literal: string(l.ch)}
 		l.readChar()
@@ -229,7 +226,7 @@ func (l *Lexer) readString() string {
 }
 
 func isLetter(ch rune) bool {
-	return unicode.IsLetter(ch) || ch == '_'
+	return unicode.IsLetter(ch) || ch == '_' || ch == '$'
 }
 
 func isDigit(ch rune) bool {

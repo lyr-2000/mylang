@@ -57,6 +57,16 @@ func RD(N float64, D int) float64 {
 	return math.Round(N*multiplier) / multiplier
 }
 
+// RDS 对序列进行四舍五入取D位小数
+func RDS(S Series, D int) Series {
+	result := make(Series, len(S))
+	multiplier := math.Pow(10, float64(D))
+	for i, v := range S {
+		result[i] = math.Round(v*multiplier) / multiplier
+	}
+	return result
+}
+
 // RET 返回序列倒数第N个值，默认返回最后一个
 func RET(S Series, N int) float64 {
 	if len(S) == 0 {
@@ -151,6 +161,15 @@ func MAX(S1, S2 Series) Series {
 		} else {
 			result[i] = S1[i]
 		}
+	}
+	return result
+}
+
+// MAXS 序列与标量的最大值（支持广播）
+func MAXS(S Series, scalar float64) Series {
+	result := make(Series, len(S))
+	for i, v := range S {
+		result[i] = math.Max(v, scalar)
 	}
 	return result
 }
@@ -539,59 +558,64 @@ func CROSS(S1, S2 Series) []bool {
 func MACD(CLOSE Series, SHORT, LONG, M int) (Series, Series, Series) {
 	DIF := SUB(EMA(CLOSE, SHORT), EMA(CLOSE, LONG))
 	DEA := EMA(DIF, M)
-	MACD := MUL(SUB(DIF, DEA), NewSeries([]float64{2}))
+	MACD := MULS(SUB(DIF, DEA), 2)
 	return DIF, DEA, MACD
 }
 
 // KDJ KDJ指标
 func KDJ(CLOSE, HIGH, LOW Series, N, M1, M2 int) (Series, Series, Series) {
-	RSV := DIV(MUL(SUB(CLOSE, LLV(LOW, N)), NewSeries([]float64{100})), SUB(HHV(HIGH, N), LLV(LOW, N)))
+	RSV := DIV(MULS(SUB(CLOSE, LLV(LOW, N)), 100), SUB(HHV(HIGH, N), LLV(LOW, N)))
 	K := EMA(RSV, M1*2-1)
 	D := EMA(K, M2*2-1)
-	J := SUB(MUL(K, NewSeries([]float64{3})), MUL(D, NewSeries([]float64{2})))
+	J := SUB(MULS(K, 3), MULS(D, 2))
 	return K, D, J
 }
 
 // RSI RSI指标
 func RSI(CLOSE Series, N int) Series {
 	DIF := SUB(CLOSE, REF(CLOSE, 1))
-	return MUL(DIV(SMA(MAX(DIF, NewSeries([]float64{0})), N, 1), SMA(ABS(DIF), N, 1)), NewSeries([]float64{100}))
+	// 使用MAXS函数处理标量0的广播，对应Python的MAX(DIF, 0)
+	rs := DIV(SMA(MAXS(DIF, 0), N, 1), SMA(ABS(DIF), N, 1))
+	result := MULS(rs, 100)
+	
+	// 应用四舍五入到2位小数（对应Python的RD函数）
+	return RDS(result, 2)
 }
 
 // BOLL 布林带指标
 func BOLL(CLOSE Series, N int, P float64) (Series, Series, Series) {
 	MID := MA(CLOSE, N)
-	UPPER := ADD(MID, MUL(STD(CLOSE, N), NewSeries([]float64{P})))
-	LOWER := SUB(MID, MUL(STD(CLOSE, N), NewSeries([]float64{P})))
+	UPPER := ADD(MID, MULS(STD(CLOSE, N), P))
+	LOWER := SUB(MID, MULS(STD(CLOSE, N), P))
 	return UPPER, MID, LOWER
 }
 
 // WR W&R威廉指标
 func WR(CLOSE, HIGH, LOW Series, N, N1 int) (Series, Series) {
-	WR := DIV(MUL(SUB(HHV(HIGH, N), CLOSE), NewSeries([]float64{100})), SUB(HHV(HIGH, N), LLV(LOW, N)))
-	WR1 := DIV(MUL(SUB(HHV(HIGH, N1), CLOSE), NewSeries([]float64{100})), SUB(HHV(HIGH, N1), LLV(LOW, N1)))
+	WR := DIV(MULS(SUB(HHV(HIGH, N), CLOSE), 100), SUB(HHV(HIGH, N), LLV(LOW, N)))
+	WR1 := DIV(MULS(SUB(HHV(HIGH, N1), CLOSE), 100), SUB(HHV(HIGH, N1), LLV(LOW, N1)))
 	return WR, WR1
 }
 
 // BIAS 乖离率
 func BIAS(CLOSE Series, L1, L2, L3 int) (Series, Series, Series) {
-	BIAS1 := DIV(MUL(SUB(CLOSE, MA(CLOSE, L1)), NewSeries([]float64{100})), MA(CLOSE, L1))
-	BIAS2 := DIV(MUL(SUB(CLOSE, MA(CLOSE, L2)), NewSeries([]float64{100})), MA(CLOSE, L2))
-	BIAS3 := DIV(MUL(SUB(CLOSE, MA(CLOSE, L3)), NewSeries([]float64{100})), MA(CLOSE, L3))
+	BIAS1 := DIV(MULS(SUB(CLOSE, MA(CLOSE, L1)), 100), MA(CLOSE, L1))
+	BIAS2 := DIV(MULS(SUB(CLOSE, MA(CLOSE, L2)), 100), MA(CLOSE, L2))
+	BIAS3 := DIV(MULS(SUB(CLOSE, MA(CLOSE, L3)), 100), MA(CLOSE, L3))
 	return BIAS1, BIAS2, BIAS3
 }
 
 // PSY 心理线指标
 func PSY(CLOSE Series, N, M int) (Series, Series) {
-	PSY := DIV(MUL(COUNT(GreaterThan(CLOSE, REF(CLOSE, 1)), N), NewSeries([]float64{100})), NewSeries([]float64{float64(N)}))
+	PSY := DIVS(MULS(COUNT(GreaterThan(CLOSE, REF(CLOSE, 1)), N), 100), float64(N))
 	PSYMA := MA(PSY, M)
 	return PSY, PSYMA
 }
 
 // CCI 顺势指标
 func CCI(CLOSE, HIGH, LOW Series, N int) Series {
-	TP := DIV(ADD(ADD(HIGH, LOW), CLOSE), NewSeries([]float64{3}))
-	return DIV(SUB(TP, MA(TP, N)), MUL(NewSeries([]float64{0.015}), AVEDEV(TP, N)))
+	TP := DIVS(ADD(ADD(HIGH, LOW), CLOSE), 3)
+	return DIV(SUB(TP, MA(TP, N)), MULS(AVEDEV(TP, N), 0.015))
 }
 
 // ATR 真实波动N日平均值
@@ -602,7 +626,7 @@ func ATR(CLOSE, HIGH, LOW Series, N int) Series {
 
 // BBI 多空指标
 func BBI(CLOSE Series, M1, M2, M3, M4 int) Series {
-	return DIV(ADD(ADD(ADD(MA(CLOSE, M1), MA(CLOSE, M2)), MA(CLOSE, M3)), MA(CLOSE, M4)), NewSeries([]float64{4}))
+	return DIVS(ADD(ADD(ADD(MA(CLOSE, M1), MA(CLOSE, M2)), MA(CLOSE, M3)), MA(CLOSE, M4)), 4)
 }
 
 // DMI 动向指标
@@ -612,10 +636,10 @@ func DMI(CLOSE, HIGH, LOW Series, M1, M2 int) (Series, Series, Series, Series) {
 	LD := SUB(REF(LOW, 1), LOW)
 	DMP := SUM(IF(GreaterThan(HD, NewSeries([]float64{0})), HD, NewSeries([]float64{0})), M1)
 	DMM := SUM(IF(GreaterThan(LD, NewSeries([]float64{0})), LD, NewSeries([]float64{0})), M1)
-	PDI := DIV(MUL(DMP, NewSeries([]float64{100})), TR)
-	MDI := DIV(MUL(DMM, NewSeries([]float64{100})), TR)
+	PDI := DIV(MULS(DMP, 100), TR)
+	MDI := DIV(MULS(DMM, 100), TR)
 	ADX := MA(ABS(DIV(SUB(MDI, PDI), ADD(PDI, MDI))), M2)
-	ADXR := DIV(ADD(ADX, REF(ADX, M2)), NewSeries([]float64{2}))
+	ADXR := DIVS(ADD(ADX, REF(ADX, M2)), 2)
 	return PDI, MDI, ADX, ADXR
 }
 
@@ -623,23 +647,23 @@ func DMI(CLOSE, HIGH, LOW Series, M1, M2 int) (Series, Series, Series, Series) {
 func TAQ(HIGH, LOW Series, N int) (Series, Series, Series) {
 	UP := HHV(HIGH, N)
 	DOWN := LLV(LOW, N)
-	MID := DIV(ADD(UP, DOWN), NewSeries([]float64{2}))
+	MID := DIVS(ADD(UP, DOWN), 2)
 	return UP, MID, DOWN
 }
 
 // KTN 肯特纳交易通道
 func KTN(CLOSE, HIGH, LOW Series, N, M int) (Series, Series, Series) {
-	MID := EMA(DIV(ADD(ADD(HIGH, LOW), CLOSE), NewSeries([]float64{3})), N)
+	MID := EMA(DIVS(ADD(ADD(HIGH, LOW), CLOSE), 3), N)
 	ATRN := ATR(CLOSE, HIGH, LOW, M)
-	UPPER := ADD(MID, MUL(ATRN, NewSeries([]float64{2})))
-	LOWER := SUB(MID, MUL(ATRN, NewSeries([]float64{2})))
+	UPPER := ADD(MID, MULS(ATRN, 2))
+	LOWER := SUB(MID, MULS(ATRN, 2))
 	return UPPER, MID, LOWER
 }
 
 // TRIX 三重指数平滑平均线
 func TRIX(CLOSE Series, M1, M2 int) (Series, Series) {
 	TR := EMA(EMA(EMA(CLOSE, M1), M1), M1)
-	TRIX := DIV(MUL(SUB(TR, REF(TR, 1)), NewSeries([]float64{100})), REF(TR, 1))
+	TRIX := DIV(MULS(SUB(TR, REF(TR, 1)), 100), REF(TR, 1))
 	TRMA := MA(TRIX, M2)
 	return TRIX, TRMA
 }
@@ -647,19 +671,19 @@ func TRIX(CLOSE Series, M1, M2 int) (Series, Series) {
 // VR 容量比率
 func VR(CLOSE, VOL Series, M1 int) Series {
 	LC := REF(CLOSE, 1)
-	return DIV(MUL(SUM(IF(GreaterThan(CLOSE, LC), VOL, NewSeries([]float64{0})), M1), NewSeries([]float64{100})), SUM(IF(LessThanOrEqual(CLOSE, LC), VOL, NewSeries([]float64{0})), M1))
+	return DIV(MULS(SUM(IF(GreaterThan(CLOSE, LC), VOL, NewSeries([]float64{0})), M1), 100), SUM(IF(LessThanOrEqual(CLOSE, LC), VOL, NewSeries([]float64{0})), M1))
 }
 
 // CR 价格动量指标
 func CR(CLOSE, HIGH, LOW Series, N int) Series {
-	MID := DIV(REF(ADD(ADD(HIGH, LOW), CLOSE), 1), NewSeries([]float64{3}))
-	return DIV(MUL(SUM(MAX(SUB(HIGH, MID), NewSeries([]float64{0})), N), NewSeries([]float64{100})), SUM(MAX(SUB(MID, LOW), NewSeries([]float64{0})), N))
+	MID := DIVS(REF(ADD(ADD(HIGH, LOW), CLOSE), 1), 3)
+	return DIV(MULS(SUM(MAX(SUB(HIGH, MID), NewSeries([]float64{0})), N), 100), SUM(MAX(SUB(MID, LOW), NewSeries([]float64{0})), N))
 }
 
 // EMV 简易波动指标
 func EMV(HIGH, LOW, VOL Series, N, M int) (Series, Series) {
 	VOLUME := DIV(MA(VOL, N), VOL)
-	MID := DIV(MUL(SUB(ADD(HIGH, LOW), REF(ADD(HIGH, LOW), 1)), NewSeries([]float64{100})), ADD(HIGH, LOW))
+	MID := DIV(MULS(SUB(ADD(HIGH, LOW), REF(ADD(HIGH, LOW), 1)), 100), ADD(HIGH, LOW))
 	EMV := MA(DIV(MUL(MUL(MID, VOLUME), SUB(HIGH, LOW)), MA(SUB(HIGH, LOW), N)), N)
 	MAEMV := MA(EMV, M)
 	return EMV, MAEMV
@@ -674,8 +698,8 @@ func DPO(CLOSE Series, M1, M2, M3 int) (Series, Series) {
 
 // BRAR BRAR-ARBR情绪指标
 func BRAR(OPEN, CLOSE, HIGH, LOW Series, M1 int) (Series, Series) {
-	AR := DIV(MUL(SUM(SUB(HIGH, OPEN), M1), NewSeries([]float64{100})), SUM(SUB(OPEN, LOW), M1))
-	BR := DIV(MUL(SUM(MAX(SUB(HIGH, REF(CLOSE, 1)), NewSeries([]float64{0})), M1), NewSeries([]float64{100})), SUM(MAX(SUB(REF(CLOSE, 1), LOW), NewSeries([]float64{0})), M1))
+	AR := DIV(MULS(SUM(SUB(HIGH, OPEN), M1), 100), SUM(SUB(OPEN, LOW), M1))
+	BR := DIV(MULS(SUM(MAX(SUB(HIGH, REF(CLOSE, 1)), NewSeries([]float64{0})), M1), 100), SUM(MAX(SUB(REF(CLOSE, 1), LOW), NewSeries([]float64{0})), M1))
 	return AR, BR
 }
 
@@ -702,7 +726,7 @@ func MASS(HIGH, LOW Series, N1, N2, M int) (Series, Series) {
 
 // ROC 变动率指标
 func ROC(CLOSE Series, N, M int) (Series, Series) {
-	ROC := DIV(MUL(SUB(CLOSE, REF(CLOSE, N)), NewSeries([]float64{100})), REF(CLOSE, N))
+	ROC := DIV(MULS(SUB(CLOSE, REF(CLOSE, N)), 100), REF(CLOSE, N))
 	MAROC := MA(ROC, M)
 	return ROC, MAROC
 }
@@ -714,14 +738,14 @@ func EXPMA(CLOSE Series, N1, N2 int) (Series, Series) {
 
 // OBV 能量潮指标
 func OBV(CLOSE, VOL Series) Series {
-	return DIV(SUM(IF(GreaterThan(CLOSE, REF(CLOSE, 1)), VOL, IF(LessThan(CLOSE, REF(CLOSE, 1)), MUL(VOL, NewSeries([]float64{-1})), NewSeries([]float64{0}))), 0), NewSeries([]float64{10000}))
+	return DIVS(SUM(IF(GreaterThan(CLOSE, REF(CLOSE, 1)), VOL, IF(LessThan(CLOSE, REF(CLOSE, 1)), MULS(VOL, -1), NewSeries([]float64{0}))), 0), 10000)
 }
 
 // MFI MFI指标是成交量的RSI指标
 func MFI(CLOSE, HIGH, LOW, VOL Series, N int) Series {
-	TYP := DIV(ADD(ADD(HIGH, LOW), CLOSE), NewSeries([]float64{3}))
+	TYP := DIVS(ADD(ADD(HIGH, LOW), CLOSE), 3)
 	V1 := DIV(SUM(IF(GreaterThan(TYP, REF(TYP, 1)), MUL(TYP, VOL), NewSeries([]float64{0})), N), SUM(IF(LessThan(TYP, REF(TYP, 1)), MUL(TYP, VOL), NewSeries([]float64{0})), N))
-	return SUB(NewSeries([]float64{100}), DIV(NewSeries([]float64{100}), ADD(NewSeries([]float64{1}), V1)))
+	return SUB(NewSeries([]float64{100}), DIVS(NewSeries([]float64{100}), 1+V1[0]))
 }
 
 // ASI 振动升降指标
@@ -732,10 +756,10 @@ func ASI(OPEN, CLOSE, HIGH, LOW Series, M1, M2 int) (Series, Series) {
 	CC := ABS(SUB(HIGH, REF(LOW, 1)))
 	DD := ABS(SUB(LC, REF(OPEN, 1)))
 
-	R := IF(GreaterThan(AA, BB), ADD(ADD(AA, DIV(BB, NewSeries([]float64{2}))), DIV(DD, NewSeries([]float64{4}))), IF(GreaterThan(BB, CC), ADD(ADD(BB, DIV(AA, NewSeries([]float64{2}))), DIV(DD, NewSeries([]float64{4}))), ADD(CC, DIV(DD, NewSeries([]float64{4})))))
+	R := IF(GreaterThan(AA, BB), ADD(ADD(AA, DIVS(BB, 2)), DIVS(DD, 4)), IF(GreaterThan(BB, CC), ADD(ADD(BB, DIVS(AA, 2)), DIVS(DD, 4)), ADD(CC, DIVS(DD, 4))))
 
-	X := ADD(SUB(CLOSE, LC), ADD(DIV(SUB(CLOSE, OPEN), NewSeries([]float64{2})), SUB(LC, REF(OPEN, 1))))
-	SI := DIV(MUL(MUL(X, NewSeries([]float64{16})), MAX(AA, BB)), R)
+	X := ADD(SUB(CLOSE, LC), ADD(DIVS(SUB(CLOSE, OPEN), 2), SUB(LC, REF(OPEN, 1))))
+	SI := DIV(MUL(MULS(X, 16), MAX(AA, BB)), R)
 	ASI := SUM(SI, M1)
 	ASIT := MA(ASI, M2)
 	return ASI, ASIT
@@ -743,12 +767,12 @@ func ASI(OPEN, CLOSE, HIGH, LOW Series, M1, M2 int) (Series, Series) {
 
 // XSII 薛斯通道II
 func XSII(CLOSE, HIGH, LOW Series, N int, M float64) (Series, Series, Series, Series) {
-	AA := MA(DIV(ADD(ADD(MUL(CLOSE, NewSeries([]float64{2})), HIGH), LOW), NewSeries([]float64{4})), 5)
-	TD1 := DIV(MUL(AA, NewSeries([]float64{float64(N)})), NewSeries([]float64{100}))
-	TD2 := DIV(MUL(AA, NewSeries([]float64{200 - float64(N)})), NewSeries([]float64{100}))
+	AA := MA(DIVS(ADD(ADD(MULS(CLOSE, 2), HIGH), LOW), 4), 5)
+	TD1 := DIVS(MULS(AA, float64(N)), 100)
+	TD2 := DIVS(MULS(AA, 200-float64(N)), 100)
 	DD := MA(CLOSE, 20) // 简化处理，使用MA替代DMA
-	TD3 := MUL(DD, ADD(NewSeries([]float64{1}), DIV(NewSeries([]float64{M}), NewSeries([]float64{100}))))
-	TD4 := MUL(DD, SUB(NewSeries([]float64{1}), DIV(NewSeries([]float64{M}), NewSeries([]float64{100}))))
+	TD3 := MULS(DD, 1+M/100)
+	TD4 := MULS(DD, 1-M/100)
 	return TD1, TD2, TD3, TD4
 }
 
@@ -793,12 +817,34 @@ func MUL(S1, S2 Series) Series {
 	return result
 }
 
+// MULS 序列与标量乘法
+func MULS(S Series, scalar float64) Series {
+	result := make(Series, len(S))
+	for i, v := range S {
+		result[i] = v * scalar
+	}
+	return result
+}
+
 // DIV 序列除法
 func DIV(S1, S2 Series) Series {
 	result := make(Series, len(S1))
 	for i := range S1 {
 		if i < len(S2) && S2[i] != 0 {
 			result[i] = S1[i] / S2[i]
+		} else {
+			result[i] = math.NaN()
+		}
+	}
+	return result
+}
+
+// DIVS 序列与标量除法
+func DIVS(S Series, scalar float64) Series {
+	result := make(Series, len(S))
+	for i, v := range S {
+		if scalar != 0 {
+			result[i] = v / scalar
 		} else {
 			result[i] = math.NaN()
 		}
@@ -1327,8 +1373,8 @@ func QRR(VOL Series) Series {
 // SHO 钱龙短线指标
 func SHO(CLOSE, VOL Series, N int) (Series, Series) {
 	VAR1 := MA(DIV(SUB(VOL, REF(VOL, 1)), REF(VOL, 1)), 5)
-	VAR2 := DIV(MUL(SUB(CLOSE, MA(CLOSE, 24)), NewSeries([]float64{100})), MA(CLOSE, 24))
-	SHT := MUL(VAR2, ADD(NewSeries([]float64{1}), VAR1))
+	VAR2 := DIV(MULS(SUB(CLOSE, MA(CLOSE, 24)), 100), MA(CLOSE, 24))
+	SHT := MULS(VAR2, 1+VAR1[0])
 	SHTMA := MA(SHT, N)
 	return SHT, SHTMA
 }
@@ -1336,7 +1382,7 @@ func SHO(CLOSE, VOL Series, N int) (Series, Series) {
 // LON 钱龙长线指标
 func LON(CLOSE, HIGH, LOW, VOL Series) (Series, Series) {
 	LC := REF(CLOSE, 1)
-	VID := DIV(SUM(VOL, 2), MUL(SUB(HHV(HIGH, 2), LLV(LOW, 2)), NewSeries([]float64{100})))
+	VID := DIV(SUM(VOL, 2), MULS(SUB(HHV(HIGH, 2), LLV(LOW, 2)), 100))
 	RC := MUL(SUB(CLOSE, LC), VID)
 	LONG := SUM(RC, 0)
 	DIFF := SMA(LONG, 10, 1)

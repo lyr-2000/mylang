@@ -17,6 +17,10 @@ type Klinedef struct {
 	Klines []*charts.Ohlcv
 }
 
+func S(s string) types.StringType {
+	return types.S(s)
+}
+
 // 加载k线，执行指标，并且生成图表
 func main() {
 	executor := api.NewMaiExecutor()
@@ -51,7 +55,20 @@ func main() {
 		"dateTime": "Ts",
 	})
 	executor.SetVar("$abcd_1好",16)
-	executor.RunCode("abc你好456:=$abcd_1好")
+	// executor.RunCode("abc你好456:=$abcd_1好")
+	executor.CompileCode(`
+MA22:MA(CLOSE,22);
+MA55:MA(CLOSE,55);
+MA144:MA(CLOSE,144);
+RSI$G2:RSI(CLOSE,14);
+VOL22:MA(VOLUME,22)
+
+	`)
+	executor.ExecuteProgram()
+	if executor.Err != nil {
+		log.Panic(executor.Err)
+		return
+	}
 
 	chart := charts.NewKlineChart(executor, "test")
 	chart.SetTickFormatType(charts.TickFormatTypeDateTime)
@@ -67,5 +84,47 @@ func main() {
 			Color: types.ArrayOKValue(types.UseColor("red")),
 			Size:  types.ArrayOKValue(types.N(10)),
 		})
+
+	for varName := range executor.GetDrawingVariables() {
+		if varName == "RSI$G2" || varName == "VOL22" {
+			continue
+		}
+		chart.AddMainCharts(&grob.Scatter{
+			// Uid:       types.StringType(varName),
+			Name:      charts.S(varName),
+			X:         charts.Array(executor.GetDateTimeArray()),
+			Y:         charts.Array(executor.GetFloat64Array(varName)),
+		})
+	}
+	chart.AddCharts(1,&grob.Scatter{
+		Name:      charts.S("VOL22"),
+		X:         charts.Array(executor.GetDateTimeArray()),
+		Y:         charts.Array(executor.GetFloat64Array("VOL22")),
+		Hovertext: charts.HoverTextArray(charts.StringRepeatToArray("VOL22 Hover", len(executor.GetDateTimeArray()))...),
+		Xaxis:     charts.S(charts.Xaxis()),
+		Yaxis:     charts.S(charts.Yaxis(1)),
+	})
+	chart.AddCharts(2,&grob.Scatter{
+		Name:      charts.S("RSI_70"),
+		X:         charts.Array(executor.GetDateTimeArray()),
+		Y:         charts.Array(charts.FloatRepeatToArray(70, len(executor.GetDateTimeArray()))),
+		Xaxis:     charts.S(charts.Xaxis()),
+		Yaxis:     charts.S(charts.Yaxis(2)),
+	})
+	chart.AddCharts(2,&grob.Scatter{
+		Name:      charts.S("RSI_30"),
+		X:         charts.Array(executor.GetDateTimeArray()),
+		Y:         charts.Array(charts.FloatRepeatToArray(30, len(executor.GetDateTimeArray()))),
+		Xaxis:     charts.S(charts.Xaxis()),
+		Yaxis:     charts.S(charts.Yaxis(2)),
+	})
+	chart.AddCharts(2,&grob.Scatter{
+		Name:      charts.S("RSI"),
+		X:         charts.Array(executor.GetDateTimeArray()),
+		Y:         charts.Array(executor.GetFloat64Array("RSI$G2")),
+		Hovertext: charts.HoverTextArray(charts.StringRepeatToArray("RSI HoverInfo", len(executor.GetDateTimeArray()))...),
+		Xaxis:     charts.S(charts.Xaxis()),
+		Yaxis:     charts.S(charts.Yaxis(2)),
+	})
 	chart.AsHtml("test.html")
 }

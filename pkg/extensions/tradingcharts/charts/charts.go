@@ -2,6 +2,7 @@ package charts
 
 import (
 	"encoding/json"
+	"math"
 	"sort"
 
 	"github.com/lyr-2000/mylang/pkg/api"
@@ -141,7 +142,7 @@ func (r *KlineChart) SetDefaultKlineChart() {
 	highData := r.Executor.GetFloat64Array("H")
 	lowData := r.Executor.GetFloat64Array("L")
 	volumeData := r.Executor.GetFloat64Array("V")
-	date, _ := r.Executor.GetVariableSlice("dateTime")
+	date  := r.Executor.GetVariableSlice("dateTime")
 
 	r.AddCharts(0,
 		&grob.Candlestick{
@@ -167,6 +168,64 @@ func (r *KlineChart) SetDefaultKlineChart() {
 			Hovertext: types.ArrayOKArray[types.StringType](),
 		})
 
+}
+func S(s string) types.StringType {
+	return types.S(s)
+}
+
+func StringRepeatToArray(text string, count int) []string {
+	var arr []string
+	for i := 0; i < count; i++ {
+		arr = append(arr, text)
+	}
+	return arr
+}
+
+func FloatRepeatToArray(text float64, count int) []float64 {
+	var arr []float64
+	for i := 0; i < count; i++ {
+		arr = append(arr, text)
+	}
+	return arr
+}
+
+func HoverTextArray(texts ...string) *types.ArrayOK[*types.StringType] {
+	var arr []*types.StringType
+	for _, text := range texts {
+		d := types.StringType(text)
+		arr = append(arr, &d)
+	}
+	return &types.ArrayOK[*types.StringType]{Array: arr}
+}
+
+func Array(b any) *types.DataArrayType {
+	return types.DataArray[any](	array(b))
+}
+func array(b any) []any {
+	switch b := b.(type) {
+	case []float64:
+		return copySlice(b)
+	case []string:
+		return copySlice(b)
+	case []any:
+		return copySlice(b)
+	}
+	return nil	
+}
+
+func copySlice[T any](x []T) []any {
+	var mp = make([]any,len(x))
+	for i,v := range x {
+		mp[i] = v
+
+		f,ok := mp[i].(float64)
+		if ok {
+			if math.IsNaN(f) {
+				mp[i] = nil
+			}
+		}
+	}
+	return mp
 }
 
 func (rb *KlineChart) AddMarker(idx int, name string, x *types.DataArrayType, y *types.DataArrayType,
@@ -218,7 +277,14 @@ func (r *KlineChart) ObjInit(opts ...FigSettingOpt) *grob.Fig {
 }
 
 func (r *KlineChart) AddMainCharts(charts ...types.Trace) {
-	r.Tmp[0] = append(r.Tmp[0], charts...)
+	r.AddCharts(0, charts...)
+}
+
+func Xaxis() string {
+	return "x"
+}
+func Yaxis(idx int) string {
+	return "y" + cast.ToString(idx+1)
 }
 
 func (r *KlineChart) AddCharts(idx int, charts ...types.Trace) {

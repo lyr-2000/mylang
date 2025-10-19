@@ -13,10 +13,40 @@ import (
 type MaiExecutor struct {
 	*mylang.MylangInterpreter
 	PreCompiledProgram *mylang.Program //if not nil ,use it to execute the program
+	DateTimeKey        string
 }
 
 func (m *MaiExecutor) SetCustomVariableGetter(getter func(name string) any) {
 	m.MylangInterpreter.Interp.CustomVariableGetter = getter
+}
+
+func (m *MaiExecutor) findOptionalDateTimeKey() string {
+	var allKey = []string{
+		"dateTime", "TS","Ts", "date", "Date",
+	}
+	for _, key := range allKey {
+		_, ok := m.MylangInterpreter.GetVariable(key)
+		if ok {
+			return key
+		}
+	}
+	return ""
+}
+
+func (m *MaiExecutor) GetDateTimeArray() []any {
+	if m.DateTimeKey == "" {
+		dateKey := m.findOptionalDateTimeKey()
+		if dateKey == "" {
+			dateKey = "dateTime"
+		}
+		m.DateTimeKey = dateKey
+	}
+	d, ok := m.MylangInterpreter.GetVariable(m.DateTimeKey)
+	if !ok {
+		return nil
+	}
+	d1, _ := mylang.ToSlice(d)
+	return d1
 }
 
 func NewMaiExecutor() *MaiExecutor {
@@ -43,16 +73,23 @@ func (b *MaiExecutor) GetFloat64Array(name string) []float64 {
 	return Arrayfloat64(d)
 }
 
-
+func (b *MaiExecutor) GetVariableSlice(name string) []any {
+	d, ok := b.MylangInterpreter.GetVariable(name)
+	if !ok {
+		return nil
+	}
+	d1, _ := mylang.ToSlice(d)
+	return d1
+}
 
 // OPEN,HIGH,LOW,CLOSE,VOLUME,UnixSec -> O,H,L,C,V,Ts
 func (b *MaiExecutor) SetVarNameAlias(alias map[string]string) {
 	if alias == nil {
-		alias = map[string]string {
-			"OPEN": "O",
-			"HIGH": "H",
-			"LOW": "L",
-			"CLOSE": "C",
+		alias = map[string]string{
+			"OPEN":   "O",
+			"HIGH":   "H",
+			"LOW":    "L",
+			"CLOSE":  "C",
 			"VOLUME": "V",
 		}
 	}
@@ -77,7 +114,6 @@ func (m *MaiExecutor) ExecuteProgram() error {
 	m.MylangInterpreter.ExecuteProgram(m.PreCompiledProgram)
 	return m.Err
 }
-
 
 // RunCode 执行麦语言代码，并返回执行结果字符串
 func (m *MaiExecutor) RunCode(code string) error {

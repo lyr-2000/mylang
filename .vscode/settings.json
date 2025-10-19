@@ -10,6 +10,6 @@
         // "**/.vscode": true,
         "**/.env": true,
         "**/.env.local": true,
-        "**/*.py":true
+        // "**/*.py":true
     }
 }
