@@ -8,6 +8,7 @@ import (
 	"sort"
 
 	"github.com/lyr-2000/mylang/pkg/api"
+	"github.com/lyr-2000/mylang/pkg/extensions/indicators"
 	grob "github.com/lyr-2000/mylang/pkg/extensions/tradingcharts/go-plotly/generated/v2.34.0/graph_objects"
 	"github.com/lyr-2000/mylang/pkg/extensions/tradingcharts/go-plotly/pkg/offline"
 	"github.com/lyr-2000/mylang/pkg/extensions/tradingcharts/go-plotly/pkg/types"
@@ -54,7 +55,7 @@ type GraphSettings struct {
 }
 
 func (r *GraphSettings) GetOrDefault(key string, defaultValue string) string {
-	if r == nil  || r.ChartSettings == nil || r.ChartSettings[key] == "" {
+	if r == nil || r.ChartSettings == nil || r.ChartSettings[key] == "" {
 		return defaultValue
 	}
 	return r.ChartSettings[key]
@@ -134,7 +135,8 @@ func NewKlineChart(executor *api.MaiExecutor, title string) *KlineChart {
 	}
 }
 
-type KlineColorMode string 
+type KlineColorMode string
+
 var (
 	GreenUpAndRedDown KlineColorMode = "green_up_and_red_down"
 	GreenDownAndRedUp KlineColorMode = "green_down_and_red_up"
@@ -142,12 +144,12 @@ var (
 
 func (r KlineColorMode) SetColor(x *grob.Candlestick) {
 	switch r {
-	case "",GreenUpAndRedDown:
+	case "", GreenUpAndRedDown:
 		x.Decreasing = &grob.CandlestickDecreasing{
 			Line: &grob.CandlestickDecreasingLine{
 				Color: types.C("red"),
 			},
-		}	
+		}
 		x.Increasing = &grob.CandlestickIncreasing{
 			Line: &grob.CandlestickIncreasingLine{
 				Color: types.C("green"),
@@ -156,7 +158,7 @@ func (r KlineColorMode) SetColor(x *grob.Candlestick) {
 	default:
 		x.Decreasing = &grob.CandlestickDecreasing{
 			Line: &grob.CandlestickDecreasingLine{
-				Color: types.C("green"),	
+				Color: types.C("green"),
 			},
 		}
 		x.Increasing = &grob.CandlestickIncreasing{
@@ -166,7 +168,6 @@ func (r KlineColorMode) SetColor(x *grob.Candlestick) {
 		}
 	}
 }
-
 
 func (r *KlineChart) AsHtml(writePath string, opts ...FigSettingOpt) {
 	w := r.ObjInit(opts...)
@@ -179,7 +180,7 @@ func (r *KlineChart) SetDefaultKlineChart() {
 	highData := r.Executor.GetFloat64Array("H")
 	lowData := r.Executor.GetFloat64Array("L")
 	volumeData := r.Executor.GetFloat64Array("V")
-	// dateTime if set 
+	// dateTime if set
 	date := r.Executor.GetDateTimeArray()
 	kl := &grob.Candlestick{
 		Uid:       "1",
@@ -192,10 +193,9 @@ func (r *KlineChart) SetDefaultKlineChart() {
 		Xaxis:     types.S("x"),
 		Yaxis:     types.S("y"),
 		Hovertext: types.ArrayOKArray[types.StringType](pnl(openData, closeData)...),
-		
 	}
 	r.KlineColorMode.SetColor(kl)
-	r.AddCharts(0,kl)
+	r.AddCharts(0, kl)
 	r.AddCharts(1,
 		&grob.Bar{
 			Uid:       "2",
@@ -255,6 +255,9 @@ func ArrayFromCond(b any, cond any) *types.DataArrayType {
 	// 转为数组，并且反射迭代。b 作为主数组, cond 是条件数组（如bool或0/1），当条件为true(或1等)时才输出
 	bVal := reflect.ValueOf(b)
 	condVal := reflect.ValueOf(cond)
+	if bVal.Kind() != reflect.Slice || condVal.Kind() != reflect.Slice {
+		panic("b and cond must be slice")
+	}
 	length := bVal.Len()
 	var arr []any
 	for i := 0; i < length; i++ {
@@ -278,26 +281,48 @@ func ArrayFromCond(b any, cond any) *types.DataArrayType {
 }
 
 func ArrayOmitZero(b any) *types.DataArrayType {
-	return types.DataArray[any](array(b, true))
+	return types.DataArray[any](TransferToArray(b, true))
 }
 
 func Array(b any) *types.DataArrayType {
-	return types.DataArray[any](array(b, false))
+	return types.DataArray[any](TransferToArray(b, false))
 }
 
-func array(b any, omitZero bool) []any {
+func TransferToArray(b any, omitZero bool) []any {
 	switch b := b.(type) {
+	case indicators.Series:
+		return CopySlice(b, omitZero)
 	case []float64:
-		return copySlice(b, omitZero)
+		return CopySlice(b, omitZero)
 	case []string:
-		return copySlice(b, omitZero)
+		return CopySlice(b, omitZero)
 	case []any:
-		return copySlice(b, omitZero)
+		return CopySlice(b, omitZero)
+	default:
+		return ReflectCopySlice(b, omitZero)
 	}
-	return nil
 }
 
-func copySlice[T any](x []T, omit0 bool) []any {
+func ReflectCopySlice(b any, omitZero bool) []any {
+	bVal := reflect.ValueOf(b)
+	if bVal.Kind() != reflect.Slice {
+		return nil
+	}
+	length := bVal.Len()
+	var arr []any
+	for i := 0; i < length; i++ {
+		d := bVal.Index(i).Interface()
+		if omitZero {
+			if d == nil || d == 0 || d == false || d == math.NaN() {
+				d = nil
+			}
+		}
+		arr = append(arr, d)
+	}
+	return arr
+}
+
+func CopySlice[T any](x []T, omit0 bool) []any {
 	var mp = make([]any, len(x))
 	for i, v := range x {
 		mp[i] = v
