@@ -21,29 +21,82 @@ func SetLogger(logger *stdlog.Logger) {
 
 // Environment 代表执行环境
 type Environment struct {
-	store map[string]interface{}
-	outer *Environment
+	variables map[string]interface{} // 存储变量
+	functions map[string]interface{} // 存储函数
+	outer     *Environment
+}
+
+func (e *Environment) DelAllVars() {
+	x := e
+	for x != nil {
+		x.variables = make(map[string]interface{})
+		x = x.outer
+	}
 }
 
 // NewEnvironment 创建一个新的执行环境
 func NewEnvironment() *Environment {
-	s := make(map[string]interface{})
-	return &Environment{store: s}
-}
-
-// Get 从环境中获取一个值
-func (e *Environment) Get(name string) (interface{}, bool) {
-	val, ok := e.store[name]
-	if !ok && e.outer != nil {
-		val, ok = e.outer.Get(name)
+	return &Environment{
+		variables: make(map[string]interface{}),
+		functions: make(map[string]interface{}),
 	}
-	return val, ok
 }
 
-// Set 在环境中设置一个值
+// Get 从环境中获取一个值（先在变量中查找，再在函数中查找）
+func (e *Environment) Get(name string) (interface{}, bool) {
+	// 先在变量中查找
+	if val, ok := e.variables[name]; ok {
+		return val, ok
+	}
+	// 再在函数中查找
+	if val, ok := e.functions[name]; ok {
+		return val, ok
+	}
+	// 如果都没找到且存在外层环境，则在外层环境中查找
+	if e.outer != nil {
+		return e.outer.Get(name)
+	}
+	return nil, false
+}
+
+// Set 在环境中设置一个值（默认设置为变量）
 func (e *Environment) Set(name string, val interface{}) interface{} {
-	e.store[name] = val
+	e.variables[name] = val
 	return val
+}
+
+// SetVariable 在环境中设置一个变量
+func (e *Environment) SetVariable(name string, val interface{}) interface{} {
+	e.variables[name] = val
+	return val
+}
+
+// SetFunction 在环境中设置一个函数
+func (e *Environment) SetFunction(name string, fn interface{}) interface{} {
+	e.functions[name] = fn
+	return fn
+}
+
+// GetVariable 从环境中获取一个变量
+func (e *Environment) GetVariable(name string) (interface{}, bool) {
+	if val, ok := e.variables[name]; ok {
+		return val, ok
+	}
+	if e.outer != nil {
+		return e.outer.GetVariable(name)
+	}
+	return nil, false
+}
+
+// GetFunction 从环境中获取一个函数
+func (e *Environment) GetFunction(name string) (interface{}, bool) {
+	if fn, ok := e.functions[name]; ok {
+		return fn, ok
+	}
+	if e.outer != nil {
+		return e.outer.GetFunction(name)
+	}
+	return nil, false
 }
 
 // Interpreter 代表解释器

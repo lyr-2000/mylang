@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"sort"
 
 	"github.com/lyr-2000/mylang/pkg/api"
 	"github.com/lyr-2000/mylang/pkg/extensions/tradingcharts/charts"
@@ -33,6 +34,9 @@ func main() {
 	json.Unmarshal(b, &bdef)
 	var mp = make(map[string][]float64)
 	var datetime []any
+	sort.Slice(bdef.Klines, func(i, j int) bool {
+		return bdef.Klines[i].GetAny("date").(string) < bdef.Klines[j].GetAny("date").(string)
+	})
 	for _, kl := range bdef.Klines {
 		mp["CLOSE"] = append(mp["CLOSE"], kl.GetFloat64("close"))
 		mp["OPEN"] = append(mp["OPEN"], kl.GetFloat64("open"))

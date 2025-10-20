@@ -15,6 +15,10 @@ type MylangInterpreter struct {
 	Err    error
 }
 
+func (mi *MylangInterpreter) DelVars() {
+	mi.Env.DelAllVars()
+}
+
 func (mi *MylangInterpreter) Reset() {
 	mi.Env = NewEnvironment()
 	mi.Interp = NewInterpreter(mi.Env)
@@ -30,12 +34,12 @@ func NewMylangInterpreter() *MylangInterpreter {
 
 // RegisterVariable 注册一个变量到解释器
 func (mi *MylangInterpreter) RegisterVariable(name string, value interface{}) {
-	mi.Env.Set(name, value)
+	mi.Env.SetVariable(name, value)
 }
 
 // RegisterFunction 注册一个用户自定义函数到解释器
 func (mi *MylangInterpreter) RegisterFunction(name string, fn func([]interface{}) interface{}) {
-	mi.Env.Set(name, fn)
+	mi.Env.SetFunction(name, fn)
 }
 
 // CompileCode 预编译麦语言代码，返回语法树
@@ -70,7 +74,7 @@ func (mi *MylangInterpreter) GetVariable(name string) (interface{}, bool) {
 	return mi.Env.Get(name)
 }
 func (mi *MylangInterpreter) SetVar(name string, value interface{}) {
-	mi.Env.Set(name, value)
+	mi.Env.SetVariable(name, value)
 }
 
 func (mi *MylangInterpreter) GetVariableSlice(name string) ([]interface{}, bool) {
@@ -160,4 +164,24 @@ func (mi *MylangInterpreter) GetSyntaxErrors() []string {
 		return []string{mi.Interp.Err.Error()}
 	}
 	return []string{}
+}
+
+// GetAllVariables 获取所有变量
+func (mi *MylangInterpreter) GetAllVariables() map[string]interface{} {
+	return mi.Env.variables
+}
+
+// GetAllFunctions 获取所有函数
+func (mi *MylangInterpreter) GetAllFunctions() map[string]interface{} {
+	return mi.Env.functions
+}
+
+// GetVariableOnly 只从变量中获取值（不查找函数）
+func (mi *MylangInterpreter) GetVariableOnly(name string) (interface{}, bool) {
+	return mi.Env.GetVariable(name)
+}
+
+// GetFunctionOnly 只从函数中获取值（不查找变量）
+func (mi *MylangInterpreter) GetFunctionOnly(name string) (interface{}, bool) {
+	return mi.Env.GetFunction(name)
 }

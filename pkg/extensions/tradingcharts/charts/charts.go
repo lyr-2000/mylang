@@ -22,6 +22,10 @@ type Ohlcv struct {
 	Store map[string]any
 }
 
+func (b *Ohlcv) GetAny(name string) any {
+	return b.Store[name]
+}
+
 func (b *Ohlcv) GetFloat64(name string) float64 {
 	return cast.ToFloat64(b.Store[name])
 }
