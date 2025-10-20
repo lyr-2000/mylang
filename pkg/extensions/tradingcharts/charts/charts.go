@@ -142,7 +142,7 @@ func (r *KlineChart) SetDefaultKlineChart() {
 	highData := r.Executor.GetFloat64Array("H")
 	lowData := r.Executor.GetFloat64Array("L")
 	volumeData := r.Executor.GetFloat64Array("V")
-	date  := r.Executor.GetVariableSlice("dateTime")
+	date := r.Executor.GetVariableSlice("dateTime")
 
 	r.AddCharts(0,
 		&grob.Candlestick{
@@ -198,29 +198,37 @@ func HoverTextArray(texts ...string) *types.ArrayOK[*types.StringType] {
 	return &types.ArrayOK[*types.StringType]{Array: arr}
 }
 
-func Array(b any) *types.DataArrayType {
-	return types.DataArray[any](	array(b))
+func ArrayOmitZero(b any) *types.DataArrayType {
+	return types.DataArray[any](array(b, true))
 }
-func array(b any) []any {
+
+func Array(b any) *types.DataArrayType {
+	return types.DataArray[any](array(b, false))
+}
+
+func array(b any, omitZero bool) []any {
 	switch b := b.(type) {
 	case []float64:
-		return copySlice(b)
+		return copySlice(b, omitZero)
 	case []string:
-		return copySlice(b)
+		return copySlice(b, omitZero)
 	case []any:
-		return copySlice(b)
+		return copySlice(b, omitZero)
 	}
-	return nil	
+	return nil
 }
 
-func copySlice[T any](x []T) []any {
-	var mp = make([]any,len(x))
-	for i,v := range x {
+func copySlice[T any](x []T, omit0 bool) []any {
+	var mp = make([]any, len(x))
+	for i, v := range x {
 		mp[i] = v
 
-		f,ok := mp[i].(float64)
+		f, ok := mp[i].(float64)
 		if ok {
 			if math.IsNaN(f) {
+				mp[i] = nil
+			}
+			if omit0 && f == 0 {
 				mp[i] = nil
 			}
 		}

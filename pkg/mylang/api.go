@@ -1,6 +1,9 @@
 package mylang
 
 import (
+	"fmt"
+	"strings"
+
 	"github.com/lyr-2000/mylang/pkg/extensions/indicators"
 	"github.com/spf13/cast"
 )
@@ -52,6 +55,13 @@ func (mi *MylangInterpreter) Execute(code string) interface{} {
 	lexer := NewLexer(code)
 	parser := NewParser(lexer)
 	program := parser.ParseProgram()
+	
+	// 检查语法错误
+	if len(program.Errors) > 0 {
+		mi.Interp.Err = fmt.Errorf("语法错误: %s", strings.Join(program.Errors, "; "))
+		return nil
+	}
+	
 	return mi.Interp.Eval(program)
 }
 
@@ -105,4 +115,28 @@ func (mi *MylangInterpreter) GetDrawingVariables() map[string]struct{} {
 func (mi *MylangInterpreter) IsDrawingVariable(name string) bool {
 	_, exists := mi.Interp.drawingVars[name]
 	return exists
+}
+
+// GetAllSuffixParams 获取所有变量的修饰符映射
+func (mi *MylangInterpreter) GetAllSuffixParams() map[string][]string {
+	return mi.Interp.suffixParams
+}
+
+// GetSuffixParams 获取指定变量的修饰符
+func (mi *MylangInterpreter) GetSuffixParams(name string) ([]string, bool) {
+	params, exists := mi.Interp.suffixParams[name]
+	return params, exists
+}
+
+// HasSyntaxErrors 检查是否有语法错误
+func (mi *MylangInterpreter) HasSyntaxErrors() bool {
+	return mi.Interp.Err != nil
+}
+
+// GetSyntaxErrors 获取语法错误列表
+func (mi *MylangInterpreter) GetSyntaxErrors() []string {
+	if mi.Interp.Err != nil {
+		return []string{mi.Interp.Err.Error()}
+	}
+	return []string{}
 }

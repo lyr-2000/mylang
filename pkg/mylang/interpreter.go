@@ -49,6 +49,7 @@ type Interpreter struct {
 	env         *Environment
 	CustomVariableGetter func (name string) (any) // if nil, use env.Get(name) to get the variable value
 	drawingVars map[string]struct{} // 记录画图变量
+	suffixParams map[string][]string // 记录变量名到修饰符的映射
 	Err         error
 }
 
@@ -57,6 +58,7 @@ func NewInterpreter(env *Environment) *Interpreter {
 	return &Interpreter{
 		env:         env,
 		drawingVars: make(map[string]struct{}),
+		suffixParams: make(map[string][]string),
 	}
 }
 
@@ -117,6 +119,12 @@ func (i *Interpreter) evalAssignmentStatement(stmt *AssignmentStatement) interfa
 	if stmt.IsDrawingVar {
 		i.drawingVars[stmt.Name.Value] = struct{}{}
 		Logger.Println("Added", stmt.Name.Value, "to drawing variables")
+	}
+
+	// 存储修饰符
+	if len(stmt.SuffixParams) > 0 {
+		i.suffixParams[stmt.Name.Value] = stmt.SuffixParams
+		Logger.Println("Added suffix params for", stmt.Name.Value, ":", stmt.SuffixParams)
 	}
 
 	return i.env.Set(stmt.Name.Value, val)

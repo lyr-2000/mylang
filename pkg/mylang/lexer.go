@@ -41,6 +41,8 @@ const (
 type Token struct {
 	Type    TokenType
 	Literal string
+	Line    int // 行号
+	Column  int // 列号
 }
 
 // Lexer 代表词法分析器
@@ -49,11 +51,13 @@ type Lexer struct {
 	pos     int
 	readPos int
 	ch      rune
+	line    int // 当前行号
+	column  int // 当前列号
 }
 
 // NewLexer 创建一个新的词法分析器
 func NewLexer(input string) *Lexer {
-	l := &Lexer{input: input}
+	l := &Lexer{input: input, line: 1, column: 1}
 	l.readChar()
 	return l
 }
@@ -66,6 +70,14 @@ func (l *Lexer) readChar() {
 		var size int
 		l.ch, size = utf8.DecodeRuneInString(l.input[l.readPos:])
 		l.readPos += size
+		
+		// 更新行号和列号
+		if l.ch == '\n' {
+			l.line++
+			l.column = 1
+		} else {
+			l.column++
+		}
 	}
 }
 
@@ -81,6 +93,10 @@ func (l *Lexer) NextToken() Token {
 	var tok Token
 
 	l.skipWhitespace()
+	
+	// 设置当前token的行号和列号
+	tok.Line = l.line
+	tok.Column = l.column
 
 	switch l.ch {
 	case '+':

@@ -105,6 +105,12 @@ func (b *MaiExecutor) SetVarNameAlias(alias map[string]string) {
 
 func (m *MaiExecutor) CompileCode(code string) error {
 	m.PreCompiledProgram = m.MylangInterpreter.CompileCode(code)
+	
+	// 检查编译错误
+	if len(m.PreCompiledProgram.Errors) > 0 {
+		return fmt.Errorf("编译错误: %s", strings.Join(m.PreCompiledProgram.Errors, "; "))
+	}
+	
 	return nil
 }
 
@@ -193,6 +199,9 @@ func (m *MaiExecutor) printExpression(expr mylang.Expression, indent int) {
 func (m *MaiExecutor) ExecuteProgram() error {
 	if m.PreCompiledProgram == nil {
 		return fmt.Errorf("PreCompiledProgram is nil")
+	}
+	if len(m.PreCompiledProgram.Errors) > 0 {
+		log.Panicf("编译错误: %s", strings.Join(m.PreCompiledProgram.Errors, "; "))
 	}
 	m.MylangInterpreter.ExecuteProgram(m.PreCompiledProgram)
 	return m.Err

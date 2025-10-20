@@ -56,17 +56,17 @@ func main() {
 	})
 	executor.SetVar("$abcd_1好",16)
 	// executor.RunCode("abc你好456:=$abcd_1好")
-	executor.CompileCode(`
+	err = executor.CompileCode(`
 MA22:MA(CLOSE,22);
 MA55:MA(CLOSE,55);
 MA144:MA(CLOSE,144);
 RSI$G2:RSI(CLOSE,14);
-VOL22:MA(VOLUME,22)
-ZTPPrice:ZTPRICE(C,0.1)
+VOL22:MA(VOLUME,22);
+ZTPPrice:ZTPRICE(C,0.1);
 涨停:=C>=ZTPRICE(REF(C,1),0.1);
 
-去除:=1
-ZTPPrice:ZTPRICE(C,0.1)
+去除:=1;
+ZTPPrice:ZTPRICE(C,0.1);
 涨停:=C>=ZTPRICE(REF(C,1),0.1);
 前天涨停:=REF(涨停,2);
 昨天阴线:=REF(C,1)<REF(O,1);
@@ -74,8 +74,16 @@ ZTPPrice:ZTPRICE(C,0.1)
 N字涨停板$m:=前天涨停 AND 昨天阴线 AND 碰涨停 AND 去除;
 
 	`)
+	if err != nil {
+		log.Panic(err)
+		return
+	}
 	executor.PrintProgramTree()
-	executor.ExecuteProgram()
+	err = executor.ExecuteProgram()
+	if err != nil {
+		log.Panic(err)
+		return
+	}
 	if executor.Err != nil {
 		log.Panic(executor.Err)
 		return

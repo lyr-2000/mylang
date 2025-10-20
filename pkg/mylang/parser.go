@@ -1,6 +1,7 @@
 package mylang
 
 import (
+	"fmt"
 	"strconv"
 	"strings"
 )
@@ -25,6 +26,7 @@ type Expression interface {
 // Program 代表整个程序
 type Program struct {
 	Statements []Statement
+	Errors     []string // 存储语法错误
 }
 
 func (p *Program) String() string {
@@ -113,14 +115,25 @@ type AssignmentStatement struct {
 	Name         *Identifier
 	Value        Expression
 	IsDrawingVar bool // true表示是画图变量赋值(:), false表示普通赋值(:=)
+	SuffixParams []string // 存储修饰符，如 COLORRED, NODRAW
 }
 
 func (as *AssignmentStatement) statementNode() {}
 func (as *AssignmentStatement) String() string {
+	result := ""
 	if as.IsDrawingVar {
-		return as.Name.String() + " : " + as.Value.String() + ";"
+		result = as.Name.String() + " : " + as.Value.String()
+	} else {
+		result = as.Name.String() + " := " + as.Value.String()
 	}
-	return as.Name.String() + " := " + as.Value.String() + ";"
+	
+	// 添加修饰符
+	if len(as.SuffixParams) > 0 {
+		result += "," + strings.Join(as.SuffixParams, ",")
+	}
+	
+	result += ";"
+	return result
 }
 
 // ExpressionStatement 代表一个表达式语句
@@ -160,12 +173,23 @@ func (p *Parser) nextToken() {
 func (p *Parser) ParseProgram() *Program {
 	program := &Program{}
 	program.Statements = []Statement{}
+	program.Errors = []string{}
 
 	for p.curTok.Type != TokenEOF {
 		stmt := p.parseStatement()
 		if stmt != nil {
 			program.Statements = append(program.Statements, stmt)
 		}
+		
+		// 语法校验：确保每行以分号结尾
+		if p.curTok.Type != TokenSemicolon && p.curTok.Type != TokenEOF {
+			errorMsg := fmt.Sprintf("第%d行第%d列：语法错误，语句必须以分号结尾，当前token: %s", p.curTok.Line, p.curTok.Column, p.curTok.Literal)
+			Logger.Printf("第%d行第%d列：语法错误，语句必须以分号结尾，当前token: %s", p.curTok.Line, p.curTok.Column, p.curTok.Literal)
+			program.Errors = append(program.Errors, errorMsg)
+			// 返回错误程序，停止解析
+			return program
+		}
+		
 		p.nextToken()
 	}
 	Logger.Println("Parsed program with", len(program.Statements), "statements")
@@ -183,6 +207,10 @@ func (p *Parser) ParseProgram() *Program {
 						str += as.Value.String()
 					} else {
 						str += "<nil value>"
+					}
+					// 添加修饰符信息
+					if len(as.SuffixParams) > 0 {
+						str += "," + strings.Join(as.SuffixParams, ",")
 					}
 				} else {
 					str = "<nil name>"
@@ -222,7 +250,7 @@ func (p *Parser) parseStatement() Statement {
 }
 
 func (p *Parser) parseAssignmentStatement() *AssignmentStatement {
-	stmt := &AssignmentStatement{Token: p.curTok}
+	stmt := &AssignmentStatement{Token: p.curTok, SuffixParams: []string{}}
 	Logger.Println("Parsing assignment, current token:", p.curTok.Literal)
 
 	// 已经检查过当前token是标识符
@@ -247,6 +275,23 @@ func (p *Parser) parseAssignmentStatement() *AssignmentStatement {
 
 	p.nextToken()
 	stmt.Value = p.parseExpression(LOWEST)
+
+	// 解析修饰符（逗号分隔的标识符）
+	if p.peekTok.Type == TokenComma {
+		p.nextToken() // 跳过第一个逗号
+		for p.peekTok.Type == TokenIdentifier {
+			p.nextToken()
+			stmt.SuffixParams = append(stmt.SuffixParams, p.curTok.Literal)
+			Logger.Println("Added suffix param:", p.curTok.Literal)
+			
+			// 如果下一个是逗号，继续解析
+			if p.peekTok.Type == TokenComma {
+				p.nextToken() // 跳过逗号
+			} else {
+				break
+			}
+		}
+	}
 
 	// 跳过分号（如果存在）
 	if p.peekTok.Type == TokenSemicolon {

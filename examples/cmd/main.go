@@ -13,8 +13,11 @@ func main() {
 
 	// 注册变量
 	closeData := []float64{100.0, 101.0, 102.0, 103.0, 104.0}
+	highData := []float64{105.0, 106.0, 107.0, 108.0, 109.0}
 	interp.RegisterVariable("CLOSE", closeData)
+	interp.RegisterVariable("HIGH", highData)
 	fmt.Println("Registered CLOSE variable with data:", closeData)
+	fmt.Println("Registered HIGH variable with data:", highData)
 
 	// 确认变量已注册
 	if val, found := interp.GetVariable("CLOSE"); found {
@@ -81,20 +84,20 @@ S5:=IF(NAMELIKE('C'),0,1);
 S6:=IF(INBLOCK('创业板'),0,1);
 S7:=IF(INBLOCK('北证50'),0,1);
 去除:=S1 AND S2 AND S4 AND S5 AND S6 AND S7;
-a:=1
-b:=2
-c:a>b AND b=0
-d:b=2
-xx:HIGH>CLOSE
-xy:HIGH<CLOSE
-xz:HIGH=CLOSE
-zy:HIGH!=CLOSE
-zz:HIGH<=CLOSE
-zzz:HIGH>=CLOSE
-zzzz:HIGH==CLOSE
-zzzzz:HIGH!=CLOSE
-zzzzzz:HIGH<=CLOSE
-zzzzzzz:HIGH>=CLOSE
+a:=1;
+b:=2;
+c:a>b AND b=0;
+d:b=2;
+xx:HIGH>CLOSE;
+xy:HIGH<CLOSE;			
+xz:HIGH=CLOSE;
+zy:HIGH!=CLOSE;
+zz:HIGH<=CLOSE;	
+zzz:HIGH>=CLOSE;
+zzzz:HIGH==CLOSE;
+zzzzz:HIGH!=CLOSE;
+zzzzzz:HIGH<=CLOSE;	
+zzzzzzz:HIGH>=CLOSE,COLORRED,NODRAW;
     `
 	result := interp.Execute(code)
 	fmt.Println("Result:", result)
@@ -122,5 +125,23 @@ zzzzzzz:HIGH>=CLOSE
 		}
 	} else {
 		fmt.Println("No drawing variables found")
+	}
+
+	// 检查修饰符
+	fmt.Println("\nSuffix parameters:")
+	allSuffixParams := interp.GetAllSuffixParams()
+	if len(allSuffixParams) > 0 {
+		for varName, params := range allSuffixParams {
+			fmt.Printf("- %s: %v\n", varName, params)
+		}
+	} else {
+		fmt.Println("No suffix parameters found")
+	}
+
+	// 测试特定变量的修饰符
+	if params, exists := interp.GetSuffixParams("zzzzzzz"); exists {
+		fmt.Printf("zzzzzzz suffix params: %v\n", params)
+	} else {
+		fmt.Println("zzzzzzz has no suffix params")
 	}
 }
