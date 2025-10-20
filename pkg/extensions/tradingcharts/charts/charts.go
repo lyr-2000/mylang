@@ -292,6 +292,10 @@ func TransferToArray(b any, omitZero bool) []any {
 	switch b := b.(type) {
 	case indicators.Series:
 		return CopySlice(b, omitZero)
+	case []byte:
+		return CopySlice(b, omitZero)
+	case []bool:
+		return CopySlice(b, omitZero)
 	case []float64:
 		return CopySlice(b, omitZero)
 	case []string:

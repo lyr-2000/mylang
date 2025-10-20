@@ -2,10 +2,10 @@ package mylang
 
 import (
 	"fmt"
+	"reflect"
 	"strings"
 
 	"github.com/lyr-2000/mylang/pkg/extensions/indicators"
-	"github.com/spf13/cast"
 )
 
 // MylangInterpreter 代表麦语言解释器的接口
@@ -94,8 +94,29 @@ func ToSlice(b any) ([]any, bool) {
 	if ok {
 		return copySlice[float64](slf2),true
 	}
-	d := cast.ToSlice(b)
-	return d, true
+	return AnySlice(b)
+}
+
+func AnySlice(b any) ([]any, bool) {
+	switch b := b.(type) {
+	case []string:
+		return copySlice(b), true
+	case []float64:
+		return copySlice(b), true
+	case indicators.Series:
+		return copySlice[float64](b), true
+	default:
+		bVal := reflect.ValueOf(b)
+		if bVal.Kind() != reflect.Slice {
+			return nil, false
+		}
+		length := bVal.Len()
+		var arr []any
+		for i := 0; i < length; i++ {
+			arr = append(arr, bVal.Index(i).Interface())
+		}
+		return arr, true
+	}
 }
 
 func copySlice[T any](arr []T) []any {

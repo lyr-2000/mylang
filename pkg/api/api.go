@@ -66,6 +66,23 @@ func Arrayfloat64(b any) []float64 {
 	return cast.ToFloat64Slice(b)
 }
 
+func (b *MaiExecutor) GetBoolArray(name string) []bool {
+	d, ok := b.MylangInterpreter.GetVariable(name)
+	if !ok {
+		return nil
+	}
+	return cast.ToBoolSlice(d)
+}
+
+func (b *MaiExecutor) GetByteArray(name string) []byte {
+	d, ok := b.MylangInterpreter.GetVariable(name)
+	if !ok {
+		return nil
+	}
+	x,_ :=  cast.ToUint8SliceE(d)
+	return x
+}
+
 func (b *MaiExecutor) GetFloat64Array(name string) []float64 {
 	d, ok := b.MylangInterpreter.GetVariable(name)
 	if !ok {

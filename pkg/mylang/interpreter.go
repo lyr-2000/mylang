@@ -4,9 +4,11 @@ import (
 	"fmt"
 	"io"
 	stdlog "log"
+
 	// "os"
-	
+
 	"github.com/lyr-2000/mylang/pkg/extensions/indicators"
+	"github.com/spf13/cast"
 )
 
 var (
@@ -46,18 +48,18 @@ func (e *Environment) Set(name string, val interface{}) interface{} {
 
 // Interpreter 代表解释器
 type Interpreter struct {
-	env         *Environment
-	CustomVariableGetter func (name string) (any) // if nil, use env.Get(name) to get the variable value
-	drawingVars map[string]struct{} // 记录画图变量
-	suffixParams map[string][]string // 记录变量名到修饰符的映射
-	Err         error
+	env                  *Environment
+	CustomVariableGetter func(name string) any // if nil, use env.Get(name) to get the variable value
+	drawingVars          map[string]struct{}   // 记录画图变量
+	suffixParams         map[string][]string   // 记录变量名到修饰符的映射
+	Err                  error
 }
 
 // NewInterpreter 创建一个新的解释器
 func NewInterpreter(env *Environment) *Interpreter {
 	return &Interpreter{
-		env:         env,
-		drawingVars: make(map[string]struct{}),
+		env:          env,
+		drawingVars:  make(map[string]struct{}),
 		suffixParams: make(map[string][]string),
 	}
 }
@@ -288,7 +290,7 @@ func (i *Interpreter) evalLogicalAnd(left, right interface{}) interface{} {
 	// 处理数组模式，兼容 Series 类型
 	leftArr, leftIsArr := i.toFloat64Slice(left)
 	rightArr, rightIsArr := i.toFloat64Slice(right)
-	
+
 	if leftIsArr && rightIsArr {
 		// 两个都是数组，逐元素进行 AND 运算
 		return i.logicalAndArrays(leftArr, rightArr)
@@ -301,7 +303,7 @@ func (i *Interpreter) evalLogicalAnd(left, right interface{}) interface{} {
 		leftBool := i.toBool(left)
 		return i.logicalAndArrayWithScalar(rightArr, leftBool)
 	}
-	
+
 	// 标量模式
 	leftBool := i.toBool(left)
 	rightBool := i.toBool(right)
@@ -313,7 +315,7 @@ func (i *Interpreter) evalLogicalOr(left, right interface{}) interface{} {
 	// 处理数组模式，兼容 Series 类型
 	leftArr, leftIsArr := i.toFloat64Slice(left)
 	rightArr, rightIsArr := i.toFloat64Slice(right)
-	
+
 	if leftIsArr && rightIsArr {
 		// 两个都是数组，逐元素进行 OR 运算
 		return i.logicalOrArrays(leftArr, rightArr)
@@ -326,7 +328,7 @@ func (i *Interpreter) evalLogicalOr(left, right interface{}) interface{} {
 		leftBool := i.toBool(left)
 		return i.logicalOrArrayWithScalar(rightArr, leftBool)
 	}
-	
+
 	// 标量模式
 	leftBool := i.toBool(left)
 	rightBool := i.toBool(right)
@@ -338,7 +340,7 @@ func (i *Interpreter) toBool(value interface{}) bool {
 	if value == nil {
 		return false
 	}
-	
+
 	switch v := value.(type) {
 	case bool:
 		return v
@@ -374,7 +376,7 @@ func (i *Interpreter) evalComparison(left, right interface{}, operator string) i
 	// 处理数组比较，兼容 Series 类型
 	leftArr, leftIsArr := i.toFloat64Slice(left)
 	rightArr, rightIsArr := i.toFloat64Slice(right)
-	
+
 	if leftIsArr && rightIsArr {
 		// 两个都是数组，逐元素比较
 		return i.compareArrays(leftArr, rightArr, operator)
@@ -387,11 +389,11 @@ func (i *Interpreter) evalComparison(left, right interface{}, operator string) i
 		leftVal := i.toFloat64(left)
 		return i.compareArrayWithScalar(rightArr, leftVal, operator)
 	}
-	
+
 	// 标量比较
 	leftVal := i.toFloat64(left)
 	rightVal := i.toFloat64(right)
-	
+
 	switch operator {
 	case ">":
 		return leftVal > rightVal
@@ -416,7 +418,7 @@ func (i *Interpreter) compareArrays(leftArr, rightArr []float64, operator string
 	if len(rightArr) < minLen {
 		minLen = len(rightArr)
 	}
-	
+
 	result := make([]float64, minLen)
 	for i := 0; i < minLen; i++ {
 		switch operator {
@@ -516,14 +518,15 @@ func (i *Interpreter) toFloat64Slice(value interface{}) ([]float64, bool) {
 	if value == nil {
 		return nil, false
 	}
-	
+
 	switch v := value.(type) {
 	case []float64:
 		return v, true
 	case indicators.Series:
 		return []float64(v), true
 	default:
-		return nil, false
+		x := cast.ToFloat64Slice(value)
+		return x, len(x) > 0
 	}
 }
 
@@ -532,11 +535,15 @@ func (i *Interpreter) toFloat64(value interface{}) float64 {
 	if value == nil {
 		return 0
 	}
-	
+
 	switch v := value.(type) {
 	case float64:
 		return v
 	case int:
+		return float64(v)
+	case int8:
+		return float64(v)
+	case uint8:
 		return float64(v)
 	case bool:
 		if v {
@@ -566,7 +573,7 @@ func (i *Interpreter) logicalAndArrays(leftArr, rightArr []float64) []float64 {
 	if len(rightArr) < minLen {
 		minLen = len(rightArr)
 	}
-	
+
 	result := make([]float64, minLen)
 	for idx := 0; idx < minLen; idx++ {
 		leftBool := leftArr[idx] != 0
@@ -600,7 +607,7 @@ func (i *Interpreter) logicalOrArrays(leftArr, rightArr []float64) []float64 {
 	if len(rightArr) < minLen {
 		minLen = len(rightArr)
 	}
-	
+
 	result := make([]float64, minLen)
 	for idx := 0; idx < minLen; idx++ {
 		leftBool := leftArr[idx] != 0
