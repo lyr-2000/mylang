@@ -23,7 +23,7 @@ func (m *MaiExecutor) SetCustomVariableGetter(getter func(name string) any) {
 
 func (m *MaiExecutor) findOptionalDateTimeKey() string {
 	var allKey = []string{
-		"dateTime", "TS","Ts", "date", "Date",
+		"dateTime", "date", "Date","DATE", "TS", "Ts","ts","timestamp","time",
 	}
 	for _, key := range allKey {
 		_, ok := m.MylangInterpreter.GetVariable(key)
@@ -105,12 +105,12 @@ func (b *MaiExecutor) SetVarNameAlias(alias map[string]string) {
 
 func (m *MaiExecutor) CompileCode(code string) error {
 	m.PreCompiledProgram = m.MylangInterpreter.CompileCode(code)
-	
+
 	// 检查编译错误
 	if len(m.PreCompiledProgram.Errors) > 0 {
 		return fmt.Errorf("编译错误: %s", strings.Join(m.PreCompiledProgram.Errors, "; "))
 	}
-	
+
 	return nil
 }
 
@@ -119,11 +119,11 @@ func (m *MaiExecutor) PrintProgramTree() {
 		fmt.Println("PreCompiledProgram is nil")
 		return
 	}
-	
+
 	fmt.Println("=== PreCompiledProgram AST ===")
 	fmt.Printf("Total statements: %d\n", len(m.PreCompiledProgram.Statements))
 	fmt.Println()
-	
+
 	for i, stmt := range m.PreCompiledProgram.Statements {
 		fmt.Printf("Statement %d:\n", i)
 		m.printStatement(stmt, 0)
@@ -134,7 +134,7 @@ func (m *MaiExecutor) PrintProgramTree() {
 
 func (m *MaiExecutor) printStatement(stmt mylang.Statement, indent int) {
 	indentStr := strings.Repeat("  ", indent)
-	
+
 	switch s := stmt.(type) {
 	case *mylang.AssignmentStatement:
 		fmt.Printf("%sAssignmentStatement:\n", indentStr)
@@ -142,12 +142,12 @@ func (m *MaiExecutor) printStatement(stmt mylang.Statement, indent int) {
 		fmt.Printf("%s  IsDrawingVar: %t\n", indentStr, s.IsDrawingVar)
 		fmt.Printf("%s  Value:\n", indentStr)
 		m.printExpression(s.Value, indent+2)
-		
+
 	case *mylang.ExpressionStatement:
 		fmt.Printf("%sExpressionStatement:\n", indentStr)
 		fmt.Printf("%s  Expression:\n", indentStr)
 		m.printExpression(s.Expression, indent+2)
-		
+
 	default:
 		fmt.Printf("%sUnknown statement type: %T\n", indentStr, stmt)
 		fmt.Printf("%s  String: %s\n", indentStr, stmt.String())
@@ -159,19 +159,19 @@ func (m *MaiExecutor) printExpression(expr mylang.Expression, indent int) {
 		fmt.Printf("%s<nil>\n", strings.Repeat("  ", indent))
 		return
 	}
-	
+
 	indentStr := strings.Repeat("  ", indent)
-	
+
 	switch e := expr.(type) {
 	case *mylang.Identifier:
 		fmt.Printf("%sIdentifier: %s\n", indentStr, e.Value)
-		
+
 	case *mylang.NumberLiteral:
 		fmt.Printf("%sNumberLiteral: %f\n", indentStr, e.Value)
-		
+
 	case *mylang.StringLiteral:
 		fmt.Printf("%sStringLiteral: %s\n", indentStr, e.Value)
-		
+
 	case *mylang.BinaryExpression:
 		fmt.Printf("%sBinaryExpression:\n", indentStr)
 		fmt.Printf("%s  Operator: %s\n", indentStr, e.Operator)
@@ -179,7 +179,7 @@ func (m *MaiExecutor) printExpression(expr mylang.Expression, indent int) {
 		m.printExpression(e.Left, indent+2)
 		fmt.Printf("%s  Right:\n", indentStr)
 		m.printExpression(e.Right, indent+2)
-		
+
 	case *mylang.FunctionCall:
 		fmt.Printf("%sFunctionCall:\n", indentStr)
 		fmt.Printf("%s  Function:\n", indentStr)
@@ -189,7 +189,7 @@ func (m *MaiExecutor) printExpression(expr mylang.Expression, indent int) {
 			fmt.Printf("%s    [%d]:\n", indentStr, i)
 			m.printExpression(arg, indent+3)
 		}
-		
+
 	default:
 		fmt.Printf("%sUnknown expression type: %T\n", indentStr, expr)
 		fmt.Printf("%s  String: %s\n", indentStr, expr.String())

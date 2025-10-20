@@ -2,7 +2,9 @@ package charts
 
 import (
 	"encoding/json"
+	"fmt"
 	"math"
+	"reflect"
 	"sort"
 
 	"github.com/lyr-2000/mylang/pkg/api"
@@ -47,12 +49,12 @@ type SubChart struct {
 	Name       string      `json:"name"`
 	Indicators []Indicator `json:"indicators"`
 }
-type Settings struct {
+type GraphSettings struct {
 	ChartSettings map[string]string
 }
 
-func (r *Settings) GetOrDefault(key string, defaultValue string) string {
-	if r == nil || r.ChartSettings[key] == "" {
+func (r *GraphSettings) GetOrDefault(key string, defaultValue string) string {
+	if r == nil  || r.ChartSettings == nil || r.ChartSettings[key] == "" {
 		return defaultValue
 	}
 	return r.ChartSettings[key]
@@ -62,8 +64,9 @@ type KlineChart struct {
 	Title          string
 	Tmp            map[int][]types.Trace
 	Executor       *api.MaiExecutor
-	Settings       *Settings
+	Settings       *GraphSettings
 	TickFormatType string
+	KlineColorMode KlineColorMode
 	// Fig      *grob.Fig
 	// KlineAlias map[string]string
 }
@@ -131,6 +134,40 @@ func NewKlineChart(executor *api.MaiExecutor, title string) *KlineChart {
 	}
 }
 
+type KlineColorMode string 
+var (
+	GreenUpAndRedDown KlineColorMode = "green_up_and_red_down"
+	GreenDownAndRedUp KlineColorMode = "green_down_and_red_up"
+)
+
+func (r KlineColorMode) SetColor(x *grob.Candlestick) {
+	switch r {
+	case "",GreenUpAndRedDown:
+		x.Decreasing = &grob.CandlestickDecreasing{
+			Line: &grob.CandlestickDecreasingLine{
+				Color: types.C("red"),
+			},
+		}	
+		x.Increasing = &grob.CandlestickIncreasing{
+			Line: &grob.CandlestickIncreasingLine{
+				Color: types.C("green"),
+			},
+		}
+	default:
+		x.Decreasing = &grob.CandlestickDecreasing{
+			Line: &grob.CandlestickDecreasingLine{
+				Color: types.C("green"),	
+			},
+		}
+		x.Increasing = &grob.CandlestickIncreasing{
+			Line: &grob.CandlestickIncreasingLine{
+				Color: types.C("red"),
+			},
+		}
+	}
+}
+
+
 func (r *KlineChart) AsHtml(writePath string, opts ...FigSettingOpt) {
 	w := r.ObjInit(opts...)
 	offline.ToHtml(w, writePath)
@@ -142,21 +179,23 @@ func (r *KlineChart) SetDefaultKlineChart() {
 	highData := r.Executor.GetFloat64Array("H")
 	lowData := r.Executor.GetFloat64Array("L")
 	volumeData := r.Executor.GetFloat64Array("V")
-	date := r.Executor.GetVariableSlice("dateTime")
-
-	r.AddCharts(0,
-		&grob.Candlestick{
-			Uid:       "1",
-			Name:      types.S("Kline"),
-			Close:     types.DataArray(closeData),
-			Open:      types.DataArray(openData),
-			High:      types.DataArray(highData),
-			Low:       types.DataArray(lowData),
-			X:         types.DataArray(date),
-			Xaxis:     types.S("x"),
-			Yaxis:     types.S("y"),
-			Hovertext: types.ArrayOKArray[types.StringType](),
-		})
+	// dateTime if set 
+	date := r.Executor.GetDateTimeArray()
+	kl := &grob.Candlestick{
+		Uid:       "1",
+		Name:      types.S("Kline"),
+		Close:     types.DataArray(closeData),
+		Open:      types.DataArray(openData),
+		High:      types.DataArray(highData),
+		Low:       types.DataArray(lowData),
+		X:         types.DataArray(date),
+		Xaxis:     types.S("x"),
+		Yaxis:     types.S("y"),
+		Hovertext: types.ArrayOKArray[types.StringType](pnl(openData, closeData)...),
+		
+	}
+	r.KlineColorMode.SetColor(kl)
+	r.AddCharts(0,kl)
 	r.AddCharts(1,
 		&grob.Bar{
 			Uid:       "2",
@@ -169,6 +208,20 @@ func (r *KlineChart) SetDefaultKlineChart() {
 		})
 
 }
+
+func pnl(open, close []float64) []types.StringType {
+	var arr []types.StringType
+	for i := 0; i < len(open); i++ {
+		if open[i] == 0 {
+			arr = append(arr, types.StringType(""))
+			continue
+		}
+		pnl := (close[i] - open[i]) / open[i] * 100
+		arr = append(arr, types.StringType(fmt.Sprintf("C-O PNL:%.2f%% \n", pnl)))
+	}
+	return arr
+}
+
 func S(s string) types.StringType {
 	return types.S(s)
 }
@@ -196,6 +249,32 @@ func HoverTextArray(texts ...string) *types.ArrayOK[*types.StringType] {
 		arr = append(arr, &d)
 	}
 	return &types.ArrayOK[*types.StringType]{Array: arr}
+}
+
+func ArrayFromCond(b any, cond any) *types.DataArrayType {
+	// 转为数组，并且反射迭代。b 作为主数组, cond 是条件数组（如bool或0/1），当条件为true(或1等)时才输出
+	bVal := reflect.ValueOf(b)
+	condVal := reflect.ValueOf(cond)
+	length := bVal.Len()
+	var arr []any
+	for i := 0; i < length; i++ {
+		var add bool
+		condElem := condVal.Index(i)
+		switch condElem.Kind() {
+		case reflect.Bool:
+			add = condElem.Bool()
+		case reflect.Float64, reflect.Float32, reflect.Int, reflect.Int64, reflect.Int32, reflect.Int16, reflect.Int8:
+			add = condElem.Interface() != 0 && condElem.Interface() != false && condElem.Interface() != math.NaN()
+		default:
+			add = false
+		}
+		if add {
+			arr = append(arr, bVal.Index(i).Interface())
+		} else {
+			arr = append(arr, nil)
+		}
+	}
+	return types.DataArray[any](arr)
 }
 
 func ArrayOmitZero(b any) *types.DataArrayType {
@@ -292,6 +371,9 @@ func Xaxis() string {
 	return "x"
 }
 func Yaxis(idx int) string {
+	if idx == 0 {
+		return "y"
+	}
 	return "y" + cast.ToString(idx+1)
 }
 

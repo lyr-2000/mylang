@@ -91,6 +91,7 @@ N字涨停板$m:=前天涨停 AND 昨天阴线 AND 碰涨停 AND 去除;
 
 	chart := charts.NewKlineChart(executor, "test")
 	chart.SetTickFormatType(charts.TickFormatTypeDateTime)
+	chart.KlineColorMode = charts.GreenDownAndRedUp
 	chart.SetDefaultKlineChart()
 	var x []types.StringType
 	for i := 0; i < 30; i++ {
