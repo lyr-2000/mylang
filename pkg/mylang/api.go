@@ -42,8 +42,15 @@ func (mi *MylangInterpreter) RegisterFunction(name string, fn func([]interface{}
 	mi.Env.SetFunction(name, fn)
 }
 
+func hasComment(code string) bool {
+	return strings.Contains(code,"{")
+}
+
 // CompileCode 预编译麦语言代码，返回语法树
 func (mi *MylangInterpreter) CompileCode(code string) *Program {
+	if hasComment(code) {
+		code = TrimComment(code)
+	}
 	lexer := NewLexer(code)
 	parser := NewParser(lexer)
 	return parser.ParseProgram()
@@ -56,16 +63,12 @@ func (mi *MylangInterpreter) ExecuteProgram(program *Program) interface{} {
 
 // Execute 执行麦语言代码
 func (mi *MylangInterpreter) Execute(code string) interface{} {
-	lexer := NewLexer(code)
-	parser := NewParser(lexer)
-	program := parser.ParseProgram()
-	
+	program := mi.CompileCode(code)
 	// 检查语法错误
 	if len(program.Errors) > 0 {
 		mi.Interp.Err = fmt.Errorf("语法错误: %s", strings.Join(program.Errors, "; "))
 		return nil
 	}
-	
 	return mi.Interp.Eval(program)
 }
 

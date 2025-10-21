@@ -213,6 +213,18 @@ func (r *KlineChart) SetDefaultKlineChart() {
 
 }
 
+func Size(k float64) *types.ArrayOK[*types.NumberType] {
+	return types.ArrayOKValue(types.N(k))
+}
+
+func Color(x string) *types.ArrayOK[*types.ColorWithColorScale]{
+	return types.ArrayOKValue(types.UseColor("black"))
+}
+
+func Symbol(x grob.ScatterMarkerSymbol) *types.ArrayOK[*grob.ScatterMarkerSymbol] {
+	return types.ArrayOKValue(grob.ScatterMarkerSymbolTriangleUp)
+}
+
 func pnl(open, close []float64) []types.StringType {
 	var arr []types.StringType
 	for i := 0; i < len(open); i++ {
@@ -255,6 +267,7 @@ func HoverTextArray(texts ...string) *types.ArrayOK[*types.StringType] {
 	return &types.ArrayOK[*types.StringType]{Array: arr}
 }
 
+
 func ArrayFromCond(b any, cond any) *types.DataArrayType {
 	// 转为数组，并且反射迭代。b 作为主数组, cond 是条件数组（如bool或0/1），当条件为true(或1等)时才输出
 	bVal := reflect.ValueOf(b)
@@ -273,7 +286,17 @@ func ArrayFromCond(b any, cond any) *types.DataArrayType {
 		case reflect.Float64, reflect.Float32, reflect.Int, reflect.Int64, reflect.Int32, reflect.Int16, reflect.Int8:
 			add = condElem.Interface() != 0 && condElem.Interface() != false && condElem.Interface() != math.NaN()
 		default:
-			add = false
+			d := condElem.Interface()
+			// log.Printf("ArrayFromCond condElem %v %T %v", d,d,condElem.Kind())
+			// add = false
+			switch dx := d.(type) {
+			case float64,float32:
+				add = cast.ToInt(dx) != 0
+			case int,int32,byte,uint64,int8,uint16,int16,uint32:
+				add = cast.ToInt(dx) != 0
+			case bool:
+				add = dx
+			}
 		}
 		if add {
 			arr = append(arr, bVal.Index(i).Interface())

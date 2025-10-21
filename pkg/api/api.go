@@ -23,7 +23,7 @@ func (m *MaiExecutor) SetCustomVariableGetter(getter func(name string) any) {
 
 func (m *MaiExecutor) findOptionalDateTimeKey() string {
 	var allKey = []string{
-		"dateTime", "date", "Date","DATE", "TS", "Ts","ts","timestamp","time",
+		"dateTime", "date", "Date", "DATE", "TS", "Ts", "ts", "timestamp", "time",
 	}
 	for _, key := range allKey {
 		_, ok := m.MylangInterpreter.GetVariable(key)
@@ -79,7 +79,7 @@ func (b *MaiExecutor) GetByteArray(name string) []byte {
 	if !ok {
 		return nil
 	}
-	x,_ :=  cast.ToUint8SliceE(d)
+	x, _ := cast.ToUint8SliceE(d)
 	return x
 }
 
@@ -103,12 +103,22 @@ func (b *MaiExecutor) GetVariableSlice(name string) []any {
 // OPEN,HIGH,LOW,CLOSE,VOLUME,UnixSec -> O,H,L,C,V,Ts
 func (b *MaiExecutor) SetVarNameAlias(alias map[string]string) {
 	if alias == nil {
-		alias = map[string]string{
-			"OPEN":   "O",
-			"HIGH":   "H",
-			"LOW":    "L",
-			"CLOSE":  "C",
-			"VOLUME": "V",
+		if _, ok := b.MylangInterpreter.GetVariable("C"); ok {
+			alias = map[string]string{
+				"C": "CLOSE",
+				"O": "OPEN",
+				"L": "LOW",
+				"H": "HIGH",
+				"V": "VOLUME",
+			}
+		} else {
+			alias = map[string]string{
+				"OPEN":   "O",
+				"HIGH":   "H",
+				"LOW":    "L",
+				"CLOSE":  "C",
+				"VOLUME": "V",
+			}
 		}
 	}
 	for name, alias := range alias {

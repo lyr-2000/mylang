@@ -1,0 +1,7 @@
+周期高点:REF(HHV(H,X1),1);
+周期低点:REF(LLV(L,X2),1);
+平空开多:=HIGH>=周期高点;
+平多开空:=LOW<=周期低点;
+BUYSHORT_BUY(平空开多,LOW);
+SELL_SELLSHORT(平多开空,HIGH);
+AUTOFILTER;
