@@ -149,6 +149,20 @@ func (mi *MylangInterpreter) GetOutputVariable(i int) (any, bool) {
 	return nil, false
 }
 
+// GetLastOutput 获取最后一个输出
+func (mi *MylangInterpreter) GetLastOutput() (any, bool) {
+	last := 0
+	// key := ""
+	km := mi.GetOutputVariableMap()
+	for _,v := range km {
+		if v > last {
+			last = v
+			// key = k
+		}
+	}
+	return mi.GetOutputVariable(last)
+}
+
 // IsOutputVariable 检查变量是否为画图变量
 func (mi *MylangInterpreter) IsOutputVariable(name string) bool {
 	_, exists := mi.Interp.OutputVarMap[name]

@@ -118,6 +118,9 @@ N字涨停板$m:=前天涨停 AND 昨天阴线 AND 碰涨停 AND 去除;
 		fmt.Println(x1)
 		fmt.Println(x2)
 	}
+	b1,_ := executor.GetLastOutput()
+
+	_ = b1
 	
 	xxx := executor.GetFloat64Array("N字涨停板$m")
 	_ = xxx
