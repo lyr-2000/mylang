@@ -77,7 +77,7 @@ ZTPPrice:ZTPRICE(C,0.1);
 昨天阴线:=REF(C,1)<REF(O,1);
 碰涨停:=H>=ZTPRICE(REF(C,1),0.1);
 N字涨停板$m:=前天涨停 AND 昨天阴线 AND 碰涨停 AND 去除;
-
+a:codelike(x);
 	`)
 	if err != nil {
 		log.Panic(err)

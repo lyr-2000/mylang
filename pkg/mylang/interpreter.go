@@ -322,14 +322,7 @@ func (i *Interpreter) evalIdentifier(symbol *Identifier) interface{} {
 }
 
 func (i *Interpreter) evalFunctionCall(fc *FunctionCall) interface{} {
-	defer func() {
-		err := recover()
-		if err != nil {
-			Logger.Printf("panic: %v", err)
-			i.Err = fmt.Errorf("function call %s %v not found", fc.Function.String(), err)
-		}
-
-	}()
+	
 	Logger.Println("Entered evalFunctionCall")
 	function := i.Eval(fc.Function)
 	args := []interface{}{}
@@ -340,9 +333,20 @@ func (i *Interpreter) evalFunctionCall(fc *FunctionCall) interface{} {
 	}
 
 	if fn, ok := function.(func([]interface{}) interface{}); ok {
+		defer func() {
+			err := recover()
+			if err != nil {
+				Logger.Printf("panic: %v", err)
+				i.Err = fmt.Errorf("function call %s %v not found", fc.Function.String(), err)
+			}
+	
+		}()
 		result := fn(args)
 		Logger.Println("Function call result:", result)
 		return result
+	}
+	if !i.SkipNilPointerCheck {
+		log.Panic("Function not found ", fc.Function.String())
 	}
 	Logger.Println("Function not callable:", function)
 	return nil
