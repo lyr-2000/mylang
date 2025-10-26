@@ -280,6 +280,11 @@ func TestLogicalNOT(t *testing.T) {
 			expected: false,
 		},
 		{
+			name:     "NOT (true)",
+			code:     "result := NOT 1;",
+			expected: false,
+		},
+		{
 			name:     "NOT false",
 			code:     "result := NOT 0;",
 			expected: true,
@@ -291,6 +296,11 @@ func TestLogicalNOT(t *testing.T) {
 		},
 		{
 			name:     "NOT array",
+			code:     "result := NOT ARR;",
+			expected: []float64{0, 1, 0},
+		},
+		{
+			name:     "NOT (array)",
 			code:     "result := NOT ARR;",
 			expected: []float64{0, 1, 0},
 		},

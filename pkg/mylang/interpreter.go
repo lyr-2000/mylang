@@ -348,14 +348,14 @@ func (i *Interpreter) evalFunctionCall(fc *FunctionCall) interface{} {
 	}
 
 	if fn, ok := function.(func([]interface{}) interface{}); ok {
-		defer func() {
-			err := recover()
-			if err != nil {
-				Logger.Printf("panic: %v", err)
-				i.Err = fmt.Errorf("function call %s %v not found", fc.Function.String(), err)
-			}
+		// defer func() {
+		// 	err := recover()
+		// 	if err != nil {
+		// 		Logger.Printf("panic: %v", err)
+		// 		i.Err = fmt.Errorf("function call %s %v not found", fc.Function.String(), err)
+		// 	}
 	
-		}()
+		// }()
 		result := fn(args)
 		Logger.Println("Function call result:", result)
 		return result
