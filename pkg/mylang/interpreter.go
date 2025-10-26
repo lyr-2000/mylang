@@ -3,6 +3,7 @@ package mylang
 import (
 	"fmt"
 	"io"
+	"log"
 	stdlog "log"
 
 	// "os"
@@ -107,6 +108,7 @@ type Interpreter struct {
 	_idx                 int                   //记录画图变量
 	suffixParams         map[string][]string   // 记录变量名到修饰符的映射
 	Err                  error
+	SkipNilPointerCheck bool //if false, will panic on variable is nil
 }
 func (r *Interpreter) getOutputVariableId() int {
 	r._idx++
@@ -313,6 +315,9 @@ func (i *Interpreter) evalIdentifier(symbol *Identifier) interface{} {
 		return val
 	}
 	Logger.Println("Identifier", symbol.Value, "not found")
+	if !i.SkipNilPointerCheck {
+		log.Panicf("Variable Miss: %s",symbol.Value)
+	}
 	return nil
 }
 
