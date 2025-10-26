@@ -29,6 +29,7 @@ const (
 	TokenEqual
 	TokenAnd
 	TokenOr
+	TokenNot
 	TokenGreaterThan
 	TokenLessThan
 	TokenGreaterEqual
@@ -188,6 +189,8 @@ func (l *Lexer) NextToken() Token {
 				tok.Type = TokenAnd
 			} else if tok.Literal == "OR" || tok.Literal == "or" {
 				tok.Type = TokenOr
+			} else if tok.Literal == "NOT" || tok.Literal == "not" {
+				tok.Type = TokenNot
 			}
 			return tok
 		} else if isDigit(l.ch) {

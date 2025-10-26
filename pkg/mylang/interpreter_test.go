@@ -261,3 +261,51 @@ func TestInterpreterComplexExpressionsWithSuffixParams(t *testing.T) {
 		})
 	}
 }
+
+func TestLogicalNOT(t *testing.T) {
+	env := NewEnvironment()
+	interp := NewInterpreter(env)
+
+	// 注册测试变量
+	env.Set("ARR", []float64{1.0, 0.0, 1.0})
+
+	tests := []struct {
+		name     string
+		code     string
+		expected interface{}
+	}{
+		{
+			name:     "NOT true",
+			code:     "result := NOT 1;",
+			expected: false,
+		},
+		{
+			name:     "NOT false",
+			code:     "result := NOT 0;",
+			expected: true,
+		},
+		{
+			name:     "NOT non-zero",
+			code:     "result := NOT 5;",
+			expected: false,
+		},
+		{
+			name:     "NOT array",
+			code:     "result := NOT ARR;",
+			expected: []float64{0, 1, 0},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			lexer := NewLexer(tt.code)
+			parser := NewParser(lexer)
+			program := parser.ParseProgram()
+			result := interp.Eval(program)
+
+			if !reflect.DeepEqual(result, tt.expected) {
+				t.Errorf("result = %v, want %v", result, tt.expected)
+			}
+		})
+	}
+}

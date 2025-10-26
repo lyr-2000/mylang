@@ -85,6 +85,22 @@ func (be *BinaryExpression) String() string {
 	return "(" + leftStr + " " + be.Operator + " " + rightStr + ")"
 }
 
+// UnaryExpression 代表一个一元表达式
+type UnaryExpression struct {
+	Token    Token
+	Operator string
+	Right    Expression
+}
+
+func (ue *UnaryExpression) expressionNode() {}
+func (ue *UnaryExpression) String() string {
+	rightStr := "<nil>"
+	if ue.Right != nil {
+		rightStr = ue.Right.String()
+	}
+	return "(" + ue.Operator + " " + rightStr + ")"
+}
+
 // FunctionCall 代表一个函数调用
 type FunctionCall struct {
 	Token     Token
@@ -343,6 +359,8 @@ func (p *Parser) parsePrefix(tokenType TokenType) func() Expression {
 		return p.parseStringLiteral
 	case TokenLParen:
 		return p.parseGroupedExpression
+	case TokenNot:
+		return p.parseUnaryExpression
 	}
 	return nil
 }
@@ -363,6 +381,19 @@ func (p *Parser) parseBinaryExpression(left Expression) Expression {
 	}
 
 	precedence := p.curPrecedence()
+	p.nextToken()
+	expression.Right = p.parseExpression(precedence)
+
+	return expression
+}
+
+func (p *Parser) parseUnaryExpression() Expression {
+	expression := &UnaryExpression{
+		Token:    p.curTok,
+		Operator: p.curTok.Literal,
+	}
+
+	precedence := PREFIX
 	p.nextToken()
 	expression.Right = p.parseExpression(precedence)
 

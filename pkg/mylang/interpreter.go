@@ -137,6 +137,9 @@ func (i *Interpreter) Eval(node Node) interface{} {
 	case *BinaryExpression:
 		Logger.Println("Evaluating binary expression")
 		return i.evalBinaryExpression(node)
+	case *UnaryExpression:
+		Logger.Println("Evaluating unary expression")
+		return i.evalUnaryExpression(node)
 	case *NumberLiteral:
 		Logger.Println("Evaluating number literal:", node.Value)
 		return node.Value
@@ -190,6 +193,18 @@ func (i *Interpreter) evalAssignmentStatement(stmt *AssignmentStatement) interfa
 	}
 
 	return i.env.Set(stmt.Name.Value, val)
+}
+
+func (i *Interpreter) evalUnaryExpression(ue *UnaryExpression) interface{} {
+	right := i.Eval(ue.Right)
+	Logger.Println("Unary expression, operator:", ue.Operator, "right:", right)
+
+	switch ue.Operator {
+	case "NOT", "not":
+		return i.evalLogicalNot(right)
+	}
+
+	return nil
 }
 
 func (i *Interpreter) evalBinaryExpression(be *BinaryExpression) interface{} {
@@ -697,6 +712,38 @@ func (i *Interpreter) logicalOrArrayWithScalar(arr []float64, scalar bool) []flo
 			result[idx] = 1
 		} else {
 			result[idx] = 0
+		}
+	}
+	return result
+}
+
+// evalLogicalNot 实现逻辑 NOT 运算
+func (i *Interpreter) evalLogicalNot(right interface{}) interface{} {
+	// 处理数组模式，兼容 Series 类型
+	rightArr, rightIsArr := i.toFloat64Slice(right)
+
+	if rightIsArr {
+		// 数组，逐元素进行 NOT 运算
+		return i.logicalNotArray(rightArr)
+	}
+
+	// 标量模式
+	rightBool := i.toBool(right)
+	if rightBool {
+		return false
+	}
+	return true
+}
+
+// logicalNotArray 对数组进行逐元素 NOT 运算
+func (i *Interpreter) logicalNotArray(arr []float64) []float64 {
+	result := make([]float64, len(arr))
+	for idx := 0; idx < len(arr); idx++ {
+		arrBool := arr[idx] != 0
+		if arrBool {
+			result[idx] = 0
+		} else {
+			result[idx] = 1
 		}
 	}
 	return result
