@@ -268,7 +268,7 @@ func (m *MaiExecutor) registerFuncs() {
 		m.RegisterFunction(name, func(args []interface{}) interface{} {
 			b, err := callBasicFunc(name, args)
 			if err != nil {
-				return err
+				log.Panicf("func call error: %v %s", err,name)
 			}
 			return b
 		})

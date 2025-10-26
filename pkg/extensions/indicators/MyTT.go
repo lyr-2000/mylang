@@ -1558,12 +1558,12 @@ func callFunctionByReflection(fn any, args []any) (any, error) {
 
 		// 尝试类型转换
 		if !argValue.Type().AssignableTo(expectedType) {
-			// 尝试转换
-			if argValue.CanConvert(expectedType) {
-				argValue = argValue.Convert(expectedType)
-			} else {
-				return nil, fmt.Errorf("cannot convert argument %d from %s to %s", i, argValue.Type(), expectedType)
+			// 尝试自定义类型转换
+			converted, err := convertType(argValue, expectedType)
+			if err != nil {
+				return nil, fmt.Errorf("cannot convert argument %d from %s to %s: %v", i, argValue.Type(), expectedType, err)
 			}
+			argValue = converted
 		}
 
 		convertedArgs[i] = argValue
@@ -1585,6 +1585,65 @@ func callFunctionByReflection(fn any, args []any) (any, error) {
 		}
 		return returnValues, nil
 	}
+}
+
+// convertType 自定义类型转换，支持 []float64 和 []bool 之间的相互转换
+func convertType(src reflect.Value, dstType reflect.Type) (reflect.Value, error) {
+	srcType := src.Type()
+
+	// 如果类型可以标准转换，直接使用
+	if src.CanConvert(dstType) {
+		return src.Convert(dstType), nil
+	}
+
+	// 处理 []float64 -> []bool 的转换
+	if srcType.Kind() == reflect.Slice && dstType.Kind() == reflect.Slice {
+		srcElemType := srcType.Elem()
+		dstElemType := dstType.Elem()
+
+		// []float64 -> []bool (包括 Series 类型)
+		if srcElemType.Kind() == reflect.Float64 && dstElemType.Kind() == reflect.Bool {
+			// 检查是否是 Series 类型
+			if src.CanInterface() {
+				srcSlice := src.Interface()
+				// 尝试转换为 Series
+				if series, ok := srcSlice.(Series); ok {
+					dstSlice := make([]bool, len(series))
+					for i, v := range series {
+						dstSlice[i] = v != 0.0
+					}
+					return reflect.ValueOf(dstSlice), nil
+				}
+				// 尝试转换为 []float64
+				if floatSlice, ok := srcSlice.([]float64); ok {
+					dstSlice := make([]bool, len(floatSlice))
+					for i, v := range floatSlice {
+						dstSlice[i] = v != 0.0
+					}
+					return reflect.ValueOf(dstSlice), nil
+				}
+			}
+		}
+
+		// []bool -> []float64
+		if srcElemType.Kind() == reflect.Bool && dstElemType.Kind() == reflect.Float64 {
+			if src.CanInterface() {
+				if boolSlice, ok := src.Interface().([]bool); ok {
+					dstSlice := make([]float64, len(boolSlice))
+					for i, v := range boolSlice {
+						if v {
+							dstSlice[i] = 1.0
+						} else {
+							dstSlice[i] = 0.0
+						}
+					}
+					return reflect.ValueOf(dstSlice), nil
+				}
+			}
+		}
+	}
+
+	return reflect.Value{}, fmt.Errorf("unsupported type conversion")
 }
 
 // 初始化指标函数映射

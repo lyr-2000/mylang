@@ -13,6 +13,36 @@ func Test_series(t *testing.T) {
 
 	fmt.Println(b)
 }
+func Test_if(t *testing.T) {
+	close := NewSeries([]float64{100, 102, 101, 103, 105, 104, 106, 108, 107, 109})
+	// 创建条件序列：close > 103
+	condition := make([]bool, len(close))
+	for i, v := range close {
+		condition[i] = v > 103
+	}
+	
+	// IF(condition, close, 0) - 如果条件为真返回close的值，否则返回0
+	result, err := CallIndicatorByReflection("IF", []any{condition, close, NewSeries([]float64{0, 0, 0, 0, 0, 0, 0, 0, 0, 0})})
+	if err != nil {
+		fmt.Printf("错误: %v\n", err)
+	} else {
+		fmt.Printf("结果: %v\n", result)
+	}
+}
+
+func Test_bool_conversion(t *testing.T) {
+	fmt.Println("=== 测试 []float64 -> []bool 转换 ===")
+	
+	// 测试：Series -> []bool
+	close := NewSeries([]float64{0, 1, 2, 0, 3, -1, 0})
+	result, err := CallIndicatorByReflection("IF", []any{close, NewSeries([]float64{10, 10, 10, 10, 10, 10, 10}), NewSeries([]float64{20, 20, 20, 20, 20, 20, 20})})
+	if err != nil {
+		fmt.Printf("错误: %v\n", err)
+	} else {
+		fmt.Printf("结果: %v\n", result)
+		fmt.Println("说明: 非零值(1,2,3,-1)返回10，零值返回20")
+	}
+}
 
 func TestSimpleReflectionExample(t *testing.T) {
 	// 创建测试数据
