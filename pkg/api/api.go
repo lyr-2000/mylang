@@ -100,6 +100,12 @@ func (b *MaiExecutor) GetVariableSlice(name string) []any {
 	return d1
 }
 
+func (b *MaiExecutor) SetVarMap(mp map[string][]float64) {
+	for k, arr := range mp {
+		b.SetVar(k, arr)
+	}
+}
+
 // OPEN,HIGH,LOW,CLOSE,VOLUME,UnixSec -> O,H,L,C,V,Ts
 func (b *MaiExecutor) SetVarNameAlias(alias map[string]string) {
 	if alias == nil {
@@ -121,10 +127,10 @@ func (b *MaiExecutor) SetVarNameAlias(alias map[string]string) {
 			}
 		}
 	}
-	for name, alias := range alias {
-		d, ok := b.MylangInterpreter.GetVariable(name)
+	for from, to := range alias {
+		d, ok := b.MylangInterpreter.GetVariable(from)
 		if ok {
-			b.MylangInterpreter.SetVar(alias, d)
+			b.MylangInterpreter.SetVar(to, d)
 		}
 	}
 
@@ -166,7 +172,7 @@ func (m *MaiExecutor) printStatement(stmt mylang.Statement, indent int) {
 	case *mylang.AssignmentStatement:
 		fmt.Printf("%sAssignmentStatement:\n", indentStr)
 		fmt.Printf("%s  Name: %s\n", indentStr, s.Name.String())
-		fmt.Printf("%s  IsDrawingVar: %t\n", indentStr, s.IsDrawingVar)
+		fmt.Printf("%s  IsDrawingVar: %t\n", indentStr, s.IsOutputVar)
 		fmt.Printf("%s  Value:\n", indentStr)
 		m.printExpression(s.Value, indent+2)
 

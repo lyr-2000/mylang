@@ -116,10 +116,10 @@ zzzzzzz:HIGH>=CLOSE,COLORRED,NODRAW;
 
 	// 检查画图变量
 	fmt.Println("\nDrawing variables:")
-	drawingVars := interp.GetDrawingVariables()
+	drawingVars := interp.GetOutputVariableMap()
 	if len(drawingVars) > 0 {
 		for varName := range drawingVars {
-			fmt.Printf("- %s (is drawing variable: %t)\n", varName, interp.IsDrawingVariable(varName))
+			fmt.Printf("- %s (is drawing variable: %t)\n", varName, interp.IsOutputVariable(varName))
 			b,ok := interp.GetVariable(varName)
 			fmt.Printf("%s : %v varok=%v\n",varName,b,ok)
 		}

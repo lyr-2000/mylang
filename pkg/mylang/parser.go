@@ -114,14 +114,14 @@ type AssignmentStatement struct {
 	Token        Token
 	Name         *Identifier
 	Value        Expression
-	IsDrawingVar bool // true表示是画图变量赋值(:), false表示普通赋值(:=)
+	IsOutputVar bool // true表示是画图变量赋值(:), false表示普通赋值(:=)
 	SuffixParams []string // 存储修饰符，如 COLORRED, NODRAW
 }
 
 func (as *AssignmentStatement) statementNode() {}
 func (as *AssignmentStatement) String() string {
 	result := ""
-	if as.IsDrawingVar {
+	if as.IsOutputVar {
 		result = as.Name.String() + " : " + as.Value.String()
 	} else {
 		result = as.Name.String() + " := " + as.Value.String()
@@ -198,7 +198,7 @@ func (p *Parser) ParseProgram() *Program {
 			str := ""
 			if as, ok := stmt.(*AssignmentStatement); ok {
 				if as.Name != nil {
-					if as.IsDrawingVar {
+					if as.IsOutputVar {
 						str = as.Name.String() + " : "
 					} else {
 						str = as.Name.String() + " := "
@@ -260,12 +260,12 @@ func (p *Parser) parseAssignmentStatement() *AssignmentStatement {
 	// 检查赋值类型
 	if p.peekTok.Type == TokenColonEqual {
 		// 普通赋值 :=
-		stmt.IsDrawingVar = false
+		stmt.IsOutputVar = false
 		Logger.Println("Found := assignment")
 		p.nextToken() // 跳过 :=
 	} else if p.peekTok.Type == TokenColon {
 		// 画图赋值 :
-		stmt.IsDrawingVar = true
+		stmt.IsOutputVar = true
 		Logger.Println("Found : assignment (drawing variable)")
 		p.nextToken() // 跳过 :
 	} else {

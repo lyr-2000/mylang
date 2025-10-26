@@ -43,7 +43,7 @@ func (mi *MylangInterpreter) RegisterFunction(name string, fn func([]interface{}
 }
 
 func hasComment(code string) bool {
-	return strings.Contains(code,"{")
+	return strings.Contains(code, "{")
 }
 
 // CompileCode 预编译麦语言代码，返回语法树
@@ -97,9 +97,9 @@ func ToSlice(b any) ([]any, bool) {
 	if ok {
 		return copySlice(slf), true
 	}
-	slf2,ok := b.(indicators.Series) 
+	slf2, ok := b.(indicators.Series)
 	if ok {
-		return copySlice[float64](slf2),true
+		return copySlice[float64](slf2), true
 	}
 	return AnySlice(b)
 }
@@ -134,14 +134,24 @@ func copySlice[T any](arr []T) []any {
 	return do
 }
 
-// GetDrawingVariables 获取所有画图变量
-func (mi *MylangInterpreter) GetDrawingVariables() map[string]struct{} {
-	return mi.Interp.drawingVars
+// GetOutputVariableMap 获取所有画图变量
+func (mi *MylangInterpreter) GetOutputVariableMap() map[string]int {
+	return mi.Interp.OutputVarMap
 }
 
-// IsDrawingVariable 检查变量是否为画图变量
-func (mi *MylangInterpreter) IsDrawingVariable(name string) bool {
-	_, exists := mi.Interp.drawingVars[name]
+// GetOutputVariable 获取第 i 个输出值
+func (mi *MylangInterpreter) GetOutputVariable(i int) (any, bool) {
+	for name, id2 := range mi.GetOutputVariableMap() {
+		if id2 == i {
+			return mi.GetVariable(name)
+		}
+	}
+	return nil, false
+}
+
+// IsOutputVariable 检查变量是否为画图变量
+func (mi *MylangInterpreter) IsOutputVariable(name string) bool {
+	_, exists := mi.Interp.OutputVarMap[name]
 	return exists
 }
 

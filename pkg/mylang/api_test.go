@@ -158,7 +158,7 @@ normal_var:=HIGH+CLOSE,COLORGREEN;
 	interp.Execute(code)
 
 	// 检查画图变量
-	drawingVars := interp.GetDrawingVariables()
+	drawingVars := interp.GetOutputVariableMap()
 	expectedDrawingVars := map[string]struct{}{
 		"drawing_var1": {},
 		"drawing_var2": {},
@@ -169,13 +169,13 @@ normal_var:=HIGH+CLOSE,COLORGREEN;
 	}
 
 	// 检查画图变量标识
-	if !interp.IsDrawingVariable("drawing_var1") {
+	if !interp.IsOutputVariable("drawing_var1") {
 		t.Error("Expected drawing_var1 to be a drawing variable")
 	}
-	if !interp.IsDrawingVariable("drawing_var2") {
+	if !interp.IsOutputVariable("drawing_var2") {
 		t.Error("Expected drawing_var2 to be a drawing variable")
 	}
-	if interp.IsDrawingVariable("normal_var") {
+	if interp.IsOutputVariable("normal_var") {
 		t.Error("Expected normal_var to NOT be a drawing variable")
 	}
 
@@ -213,7 +213,7 @@ test2:HIGH<CLOSE,COLORBLUE,NODRAW;
 		t.Error("Expected suffix params after execution")
 	}
 
-	drawingVars := interp.GetDrawingVariables()
+	drawingVars := interp.GetOutputVariableMap()
 	if len(drawingVars) == 0 {
 		t.Error("Expected drawing variables after execution")
 	}
@@ -227,7 +227,7 @@ test2:HIGH<CLOSE,COLORBLUE,NODRAW;
 		t.Error("Expected empty suffix params after reset")
 	}
 
-	drawingVarsAfterReset := interp.GetDrawingVariables()
+	drawingVarsAfterReset := interp.GetOutputVariableMap()
 	if len(drawingVarsAfterReset) != 0 {
 		t.Error("Expected empty drawing variables after reset")
 	}

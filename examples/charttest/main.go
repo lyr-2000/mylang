@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"reflect"
 	"sort"
 
 	"github.com/lyr-2000/mylang/pkg/api"
@@ -109,6 +110,14 @@ N字涨停板$m:=前天涨停 AND 昨天阴线 AND 碰涨停 AND 去除;
 			Size:  types.ArrayOKValue(types.N(10)),
 		})
 	
+	x1,_ := executor.GetOutputVariable(1)
+	x2,_ := executor.GetVariable("MA22")
+	if reflect.DeepEqual(x1,x2) {
+		fmt.Println("OK")
+		// log.Fatal("xxxxxxx variable error ")
+		fmt.Println(x1)
+		fmt.Println(x2)
+	}
 	
 	xxx := executor.GetFloat64Array("N字涨停板$m")
 	_ = xxx
@@ -116,7 +125,7 @@ N字涨停板$m:=前天涨停 AND 昨天阴线 AND 碰涨停 AND 去除;
 	_ = xxx
 	xxx = executor.GetFloat64Array("昨天阴线")
 	_ = xxx
-	for varName := range executor.GetDrawingVariables() {
+	for varName := range executor.GetOutputVariableMap() {
 		if varName == "RSI$G2" || varName == "VOL22" {
 			continue
 		}

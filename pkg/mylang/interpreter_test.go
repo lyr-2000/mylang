@@ -55,7 +55,7 @@ normal_var:=HIGH+CLOSE,COLORBLUE;
 		t.Run(tt.name, func(t *testing.T) {
 			// 重置解释器状态
 			interp.suffixParams = make(map[string][]string)
-			interp.drawingVars = make(map[string]struct{})
+			interp.OutputVarMap = make(map[string]int)
 
 			// 执行代码
 			lexer := NewLexer(tt.code)
@@ -156,7 +156,7 @@ normal_var:=HIGH+CLOSE,COLORGREEN;
 	interp.Execute(code)
 
 	// 检查画图变量
-	drawingVars := interp.GetDrawingVariables()
+	drawingVars := interp.GetOutputVariableMap()
 	expectedDrawingVars := map[string]struct{}{
 		"drawing_var1": {},
 		"drawing_var2": {},
@@ -167,13 +167,13 @@ normal_var:=HIGH+CLOSE,COLORGREEN;
 	}
 
 	// 检查画图变量标识
-	if !interp.IsDrawingVariable("drawing_var1") {
+	if !interp.IsOutputVariable("drawing_var1") {
 		t.Error("Expected drawing_var1 to be a drawing variable")
 	}
-	if !interp.IsDrawingVariable("drawing_var2") {
+	if !interp.IsOutputVariable("drawing_var2") {
 		t.Error("Expected drawing_var2 to be a drawing variable")
 	}
-	if interp.IsDrawingVariable("normal_var") {
+	if interp.IsOutputVariable("normal_var") {
 		t.Error("Expected normal_var to NOT be a drawing variable")
 	}
 
@@ -248,7 +248,7 @@ func TestInterpreterComplexExpressionsWithSuffixParams(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// 重置解释器状态
 			interp.Interp.suffixParams = make(map[string][]string)
-			interp.Interp.drawingVars = make(map[string]struct{})
+			interp.Interp.OutputVarMap = make(map[string]int)
 
 			// 执行代码
 			interp.Execute(tt.code)

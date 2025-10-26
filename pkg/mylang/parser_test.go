@@ -188,8 +188,8 @@ func TestParseComplexExpressionsWithSuffixParams(t *testing.T) {
 				t.Errorf("SuffixParams = %v, want %v", stmt.SuffixParams, tt.expectedParams)
 			}
 
-			if stmt.IsDrawingVar != tt.isDrawingVar {
-				t.Errorf("IsDrawingVar = %v, want %v", stmt.IsDrawingVar, tt.isDrawingVar)
+			if stmt.IsOutputVar != tt.isDrawingVar {
+				t.Errorf("IsDrawingVar = %v, want %v", stmt.IsOutputVar, tt.isDrawingVar)
 			}
 		})
 	}
@@ -206,7 +206,7 @@ func TestAssignmentStatementString(t *testing.T) {
 			stmt: &AssignmentStatement{
 				Name:         &Identifier{Value: "test"},
 				Value:        &Identifier{Value: "HIGH"},
-				IsDrawingVar: true,
+				IsOutputVar: true,
 				SuffixParams: []string{"COLORRED", "NODRAW"},
 			},
 			expected: "test : HIGH,COLORRED,NODRAW;",
@@ -216,7 +216,7 @@ func TestAssignmentStatementString(t *testing.T) {
 			stmt: &AssignmentStatement{
 				Name:         &Identifier{Value: "test"},
 				Value:        &Identifier{Value: "HIGH"},
-				IsDrawingVar: false,
+				IsOutputVar: false,
 				SuffixParams: []string{"COLORBLUE"},
 			},
 			expected: "test := HIGH,COLORBLUE;",
@@ -226,7 +226,7 @@ func TestAssignmentStatementString(t *testing.T) {
 			stmt: &AssignmentStatement{
 				Name:         &Identifier{Value: "test"},
 				Value:        &Identifier{Value: "HIGH"},
-				IsDrawingVar: true,
+				IsOutputVar: true,
 				SuffixParams: []string{},
 			},
 			expected: "test : HIGH;",

@@ -283,8 +283,12 @@ func ArrayFromCond(b any, cond any) *types.DataArrayType {
 		switch condElem.Kind() {
 		case reflect.Bool:
 			add = condElem.Bool()
+		// case reflect.Float64, reflect.Float32, reflect.Int, reflect.Int64, reflect.Int32, reflect.Int16, reflect.Int8:
+		// 	add = condElem.Interface() != 0 && condElem.Interface() != false && condElem.Interface() != math.NaN()
 		case reflect.Float64, reflect.Float32, reflect.Int, reflect.Int64, reflect.Int32, reflect.Int16, reflect.Int8:
-			add = condElem.Interface() != 0 && condElem.Interface() != false && condElem.Interface() != math.NaN()
+			d1 := condElem.Interface()
+			d := cast.ToFloat64(d1)
+			add = d != 0 && !math.IsNaN(d)
 		default:
 			d := condElem.Interface()
 			// log.Printf("ArrayFromCond condElem %v %T %v", d,d,condElem.Kind())

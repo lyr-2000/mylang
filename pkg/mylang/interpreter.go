@@ -103,16 +103,21 @@ func (e *Environment) GetFunction(name string) (interface{}, bool) {
 type Interpreter struct {
 	env                  *Environment
 	CustomVariableGetter func(name string) any // if nil, use env.Get(name) to get the variable value
-	drawingVars          map[string]struct{}   // 记录画图变量
+	OutputVarMap         map[string]int   // 记录画图变量
+	_idx                 int                   //记录画图变量
 	suffixParams         map[string][]string   // 记录变量名到修饰符的映射
 	Err                  error
+}
+func (r *Interpreter) getOutputVariableId() int {
+	r._idx++
+	return r._idx
 }
 
 // NewInterpreter 创建一个新的解释器
 func NewInterpreter(env *Environment) *Interpreter {
 	return &Interpreter{
 		env:          env,
-		drawingVars:  make(map[string]struct{}),
+		OutputVarMap: make(map[string]int),
 		suffixParams: make(map[string][]string),
 	}
 }
@@ -171,8 +176,8 @@ func (i *Interpreter) evalAssignmentStatement(stmt *AssignmentStatement) interfa
 	Logger.Println("Setting variable", stmt.Name.Value, "to", val)
 
 	// 如果是画图变量赋值，记录到画图变量映射中
-	if stmt.IsDrawingVar {
-		i.drawingVars[stmt.Name.Value] = struct{}{}
+	if stmt.IsOutputVar {
+		i.OutputVarMap[stmt.Name.Value] = i.getOutputVariableId()
 		Logger.Println("Added", stmt.Name.Value, "to drawing variables")
 	}
 
