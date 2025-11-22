@@ -319,3 +319,94 @@ func TestLogicalNOT(t *testing.T) {
 		})
 	}
 }
+
+// TestFloatComparison 测试浮点数比较，整数部分必须完全相等，小数部分允许1%误差
+func TestFloatComparison(t *testing.T) {
+	env := NewEnvironment()
+	interp := NewInterpreter(env)
+
+	tests := []struct {
+		name     string
+		code     string
+		expected interface{}
+	}{
+		{
+			name:     "相等: 123.45 == 123.46 (小数部分误差约1%)",
+			code:     "result := 123.45 == 123.46;",
+			expected: true,
+		},
+		{
+			name:     "不等: 123.45 == 124.45 (整数部分不同)",
+			code:     "result := 123.45 == 124.45;",
+			expected: false,
+		},
+		{
+			name:     "相等: 1.0 == 1.01 (小数部分误差1%)",
+			code:     "result := 1.0 == 1.01;",
+			expected: true,
+		},
+		{
+			name:     "不等: 100.0 == 101.0 (整数部分差1)",
+			code:     "result := 100.0 == 101.0;",
+			expected: false,
+		},
+		{
+			name:     "不等: 1.0 == 1.02 (小数部分误差2%)",
+			code:     "result := 1.0 == 1.02;",
+			expected: false,
+		},
+		{
+			name:     "不等: 100.0 == 103.0 (整数部分差3)",
+			code:     "result := 100.0 == 103.0;",
+			expected: false,
+		},
+		{
+			name:     "相等: 1.0 != 1.01 (小数部分误差1%)",
+			code:     "result := 1.0 != 1.01;",
+			expected: false,
+		},
+		{
+			name:     "不等: 1.0 != 1.02 (小数部分误差2%)",
+			code:     "result := 1.0 != 1.02;",
+			expected: true,
+		},
+		{
+			name:     "不等: 0.00001 == 0.000011 (差异10%)",
+			code:     "result := 0.00001 == 0.000011;",
+			expected: false,
+		},
+		{
+			name:     "零值比较",
+			code:     "result := 0.0 == 0.0000001;",
+			expected: true,
+		},
+		{
+			name:     "整数完全相等",
+			code:     "result := 100.0 == 100.0;",
+			expected: true,
+		},
+		{
+			name:     "整数部分不同但差值很小",
+			code:     "result := 1.0 == 2.0;",
+			expected: false,
+		},
+		{
+			name:     "整数部分相同，小数部分微小差异",
+			code:     "result := 4.91 == 4.90600001;",
+			expected: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			lexer := NewLexer(tt.code)
+			parser := NewParser(lexer)
+			program := parser.ParseProgram()
+			result := interp.Eval(program)
+
+			if !reflect.DeepEqual(result, tt.expected) {
+				t.Errorf("result = %v (%T), want %v (%T)", result, result, tt.expected, tt.expected)
+			}
+		})
+	}
+}

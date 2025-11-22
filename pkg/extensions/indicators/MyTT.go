@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"math"
 	"reflect"
+
+	"github.com/spf13/cast"
 )
 
 // Series 序列类型，用于表示时间序列数据
@@ -203,19 +205,64 @@ func IF(S []bool, A, B Series) Series {
 }
 
 // REF 对序列整体下移动N，返回序列
-func REF(S Series, N int) Series {
-	if N <= 0 {
-		return S
-	}
+// N 可以是 int 或 Series
+func REF(S Series, N any) Series {
 	result := make(Series, len(S))
-	for i := range S {
-		if i >= N {
-			result[i] = S[i-N]
-		} else {
-			result[i] = math.NaN()
-		}
+	var isNumber bool
+	var isSlice bool
+
+	if _, ok := N.(int); ok {
+		isNumber = true
+	}else if _, ok := N.(float64); ok {
+		isNumber = true
+	}else if _,ok := N.([]float64); ok {
+		isSlice = true
+	}else if _,ok := N.(Series); ok {
+		isSlice = true
+	}else {
+		panic("N 类型不支持")
 	}
-	return result
+	
+	// 处理 N 为 int 的情况
+	if isNumber {
+		nInt := cast.ToInt(N)
+		if nInt <= 0 {
+			return S
+		}
+		for i := range S {
+			if i >= nInt {
+				result[i] = S[i-nInt]
+			} else {
+				result[i] = math.NaN()
+			}
+		}
+		return result
+	}
+	
+	// 处理 N 为 Series 的情况
+	if isSlice {
+		nSeries := cast.ToFloat64Slice(N)
+		for i := range S {
+			if i < len(nSeries) && !math.IsNaN(nSeries[i]) {
+				nInt := int(nSeries[i])
+				idx := i - nInt
+				if idx >= 0 && idx < len(S) {
+					result[i] = S[idx]
+				} else {
+					result[i] = math.NaN()
+				}
+			} else {
+				result[i] = math.NaN()
+			}
+		}
+		return result
+	}
+	panic("N 类型不支持")
+	// 如果 N 类型不支持，返回 NaN
+	// for i := range S {
+	// 	result[i] = math.NaN()
+	// }
+	// return result
 }
 
 // DIFF 前一个值减后一个值
@@ -1550,6 +1597,9 @@ func callFunctionByReflection(fn any, args []any) (any, error) {
 		return nil, fmt.Errorf("argument count mismatch: expected %d, got %d", fnType.NumIn(), len(args))
 	}
 
+	// 获取目标序列长度（用于广播）
+	targetLength := getMaxSliceLength(args)
+
 	// 转换参数类型
 	convertedArgs := make([]reflect.Value, len(args))
 	for i, arg := range args {
@@ -1559,7 +1609,7 @@ func callFunctionByReflection(fn any, args []any) (any, error) {
 		// 尝试类型转换
 		if !argValue.Type().AssignableTo(expectedType) {
 			// 尝试自定义类型转换
-			converted, err := convertType(argValue, expectedType)
+			converted, err := convertType(argValue, expectedType, targetLength)
 			if err != nil {
 				return nil, fmt.Errorf("cannot convert argument %d from %s to %s: %v", i, argValue.Type(), expectedType, err)
 			}
@@ -1587,13 +1637,62 @@ func callFunctionByReflection(fn any, args []any) (any, error) {
 	}
 }
 
-// convertType 自定义类型转换，支持 []float64 和 []bool 之间的相互转换
-func convertType(src reflect.Value, dstType reflect.Type) (reflect.Value, error) {
+// getMaxSliceLength 获取参数中最长切片的长度
+func getMaxSliceLength(args []any) int {
+	maxLen := 0
+	for _, arg := range args {
+		rv := reflect.ValueOf(arg)
+		if rv.Kind() == reflect.Slice {
+			if length := rv.Len(); length > maxLen {
+				maxLen = length
+			}
+		}
+	}
+	return maxLen
+}
+
+// convertType 自定义类型转换，支持 []float64 和 []bool 之间的相互转换，以及单个值到切片的转换
+func convertType(src reflect.Value, dstType reflect.Type, targetLength int) (reflect.Value, error) {
 	srcType := src.Type()
 
 	// 如果类型可以标准转换，直接使用
 	if src.CanConvert(dstType) {
 		return src.Convert(dstType), nil
+	}
+
+	// 处理单个值转切片的转换
+	if dstType.Kind() == reflect.Slice {
+		dstElemType := dstType.Elem()
+		
+		// 单个 bool -> []bool (广播到目标长度)
+		if srcType.Kind() == reflect.Bool && dstElemType.Kind() == reflect.Bool {
+			boolVal := src.Bool()
+			result := make([]bool, targetLength)
+			for i := range result {
+				result[i] = boolVal
+			}
+			return reflect.ValueOf(result), nil
+		}
+		
+		// 单个 float64 -> []float64 (Series) (广播到目标长度)
+		if srcType.Kind() == reflect.Float64 && dstElemType.Kind() == reflect.Float64 {
+			floatVal := src.Float()
+			result := make([]float64, targetLength)
+			for i := range result {
+				result[i] = floatVal
+			}
+			return reflect.ValueOf(result), nil
+		}
+		
+		// 单个 int -> []float64 (Series) (广播到目标长度)
+		if srcType.Kind() == reflect.Int && dstElemType.Kind() == reflect.Float64 {
+			intVal := src.Int()
+			result := make([]float64, targetLength)
+			for i := range result {
+				result[i] = float64(intVal)
+			}
+			return reflect.ValueOf(result), nil
+		}
 	}
 
 	// 处理 []float64 -> []bool 的转换

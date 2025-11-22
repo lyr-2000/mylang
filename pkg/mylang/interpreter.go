@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"math"
 	stdlog "log"
 
 	// "os"
@@ -18,6 +19,47 @@ var (
 
 func SetLogger(logger *stdlog.Logger) {
 	Logger = logger
+}
+
+// floatEqual 比较两个浮点数是否相等，允许 1% 的误差
+// 但整数部分必须完全相等
+func floatEqual(a, b float64) bool {
+	// 如果两个数都是 NaN，则认为相等
+	if math.IsNaN(a) && math.IsNaN(b) {
+		return true
+	}
+	// 如果一个是 NaN，另一个不是，则不相等
+	if math.IsNaN(a) || math.IsNaN(b) {
+		return false
+	}
+	
+	// 获取整数部分
+	aInt := math.Trunc(a)
+	bInt := math.Trunc(b)
+	
+	// 整数部分必须完全相等
+	if aInt != bInt {
+		return false
+	}
+	
+	// 如果两个数都接近0，使用绝对误差
+	if math.Abs(a) < 1e-6 && math.Abs(b) < 1e-6 {
+		return math.Abs(a-b) < 1e-6
+	}
+	
+	// 如果差异小于绝对误差阈值，认为相等
+	if math.Abs(a-b) < 1e-10 {
+		return true
+	}
+	
+	// 使用相对误差，误差 < 1%（相对于整个数）
+	maxVal := math.Max(math.Abs(a), math.Abs(b))
+	if maxVal < 1e-10 {
+		return true
+	}
+	
+	relativeError := math.Abs(a-b) / maxVal
+	return relativeError < 0.01
 }
 
 // Environment 代表执行环境
@@ -486,9 +528,9 @@ func (i *Interpreter) evalComparison(left, right interface{}, operator string) i
 	case "<=":
 		return leftVal <= rightVal
 	case "==", "=":
-		return leftVal == rightVal
+		return floatEqual(leftVal, rightVal)
 	case "!=":
-		return leftVal != rightVal
+		return !floatEqual(leftVal, rightVal)
 	default:
 		return false
 	}
@@ -516,30 +558,30 @@ func (i *Interpreter) compareArrays(leftArr, rightArr []float64, operator string
 			} else {
 				result[i] = 0
 			}
-		case ">=":
-			if leftArr[i] >= rightArr[i] {
-				result[i] = 1
-			} else {
-				result[i] = 0
-			}
-		case "<=":
-			if leftArr[i] <= rightArr[i] {
-				result[i] = 1
-			} else {
-				result[i] = 0
-			}
-		case "==", "=":
-			if leftArr[i] == rightArr[i] {
-				result[i] = 1
-			} else {
-				result[i] = 0
-			}
-		case "!=":
-			if leftArr[i] != rightArr[i] {
-				result[i] = 1
-			} else {
-				result[i] = 0
-			}
+	case ">=":
+		if leftArr[i] >= rightArr[i] {
+			result[i] = 1
+		} else {
+			result[i] = 0
+		}
+	case "<=":
+		if leftArr[i] <= rightArr[i] {
+			result[i] = 1
+		} else {
+			result[i] = 0
+		}
+	case "==", "=":
+		if floatEqual(leftArr[i], rightArr[i]) {
+			result[i] = 1
+		} else {
+			result[i] = 0
+		}
+	case "!=":
+		if !floatEqual(leftArr[i], rightArr[i]) {
+			result[i] = 1
+		} else {
+			result[i] = 0
+		}
 		default:
 			result[i] = 0
 		}
@@ -577,13 +619,13 @@ func (i *Interpreter) compareArrayWithScalar(arr []float64, scalar float64, oper
 				result[i] = 0
 			}
 		case "==", "=":
-			if arr[i] == scalar {
+			if floatEqual(arr[i], scalar) {
 				result[i] = 1
 			} else {
 				result[i] = 0
 			}
 		case "!=":
-			if arr[i] != scalar {
+			if !floatEqual(arr[i], scalar) {
 				result[i] = 1
 			} else {
 				result[i] = 0
