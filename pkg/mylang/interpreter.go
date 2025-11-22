@@ -292,7 +292,7 @@ func (i *Interpreter) evalBinaryExpression(be *BinaryExpression) interface{} {
 			return leftVal * rightVal
 		case "/":
 			if rightVal == 0 {
-				return nil
+				return math.NaN()
 			}
 			return leftVal / rightVal
 		}
@@ -314,7 +314,9 @@ func (i *Interpreter) evalBinaryExpression(be *BinaryExpression) interface{} {
 				result[i] = leftArr[i] * rightVal
 			case "/":
 				if rightVal == 0 {
-					return nil
+					// return nil
+					result[i] = math.NaN()
+					continue
 				}
 				result[i] = leftArr[i] / rightVal
 			}
@@ -337,6 +339,7 @@ func (i *Interpreter) evalBinaryExpression(be *BinaryExpression) interface{} {
 		return result
 	} else if larrOk && rarrOk { // 数组与数组操作
 		if len(leftArr) != len(rightArr) {
+			log.Printf("Array length mismatch: %d != %d %#v", len(leftArr), len(rightArr),be)
 			return nil
 		}
 		result := make([]float64, len(leftArr))
@@ -350,7 +353,9 @@ func (i *Interpreter) evalBinaryExpression(be *BinaryExpression) interface{} {
 				result[i] = leftArr[i] * rightArr[i]
 			case "/":
 				if rightArr[i] == 0 {
-					return nil
+					// return nil
+					result[i] = math.NaN()
+					continue
 				}
 				result[i] = leftArr[i] / rightArr[i]
 			}
