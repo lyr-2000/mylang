@@ -108,7 +108,7 @@ var singleFileHTML = `
 		<div id="plot"></div>
 	<script>
 		data = JSON.parse(decodeURIComponent(escape(window.atob('{{ .B64Content }}'))))
-		Plotly.newPlot('plot', data);
+		Plotly.newPlot('plot', data, {}, {locale: 'zh-CN'});
 	</script>
 	</body>
 </html>

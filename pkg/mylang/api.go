@@ -66,7 +66,9 @@ func (mi *MylangInterpreter) Execute(code string) interface{} {
 	program := mi.CompileCode(code)
 	// 检查语法错误
 	if len(program.Errors) > 0 {
-		mi.Interp.Err = fmt.Errorf("语法错误: %s", strings.Join(program.Errors, "; "))
+		err := fmt.Errorf("语法错误: %s", strings.Join(program.Errors, "; "))
+		mi.Interp.Err = err
+		mi.Err = err // 同时设置 MylangInterpreter 的 Err 字段
 		return nil
 	}
 	return mi.Interp.Eval(program)

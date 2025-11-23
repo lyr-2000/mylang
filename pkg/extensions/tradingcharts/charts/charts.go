@@ -6,6 +6,7 @@ import (
 	"math"
 	"reflect"
 	"sort"
+	"strings"
 
 	"github.com/lyr-2000/mylang/pkg/api"
 	"github.com/lyr-2000/mylang/pkg/extensions/indicators"
@@ -72,12 +73,14 @@ type KlineChart struct {
 	Settings       *GraphSettings
 	TickFormatType string
 	KlineColorMode KlineColorMode
+	Period         string // 周期，如 "1d", "1h" 等，用于判断是否需要设置 rangebreaks
+	Calendar       grob.LayoutCalendar // 日历系统，默认为公历（Gregorian）
 	// Fig      *grob.Fig
 	// KlineAlias map[string]string
 }
 
 var (
-	TickFormatTypeDateNum  = "%Y%m%d"
+	// TickFormatTypeDateNum  = "%Y%m%d"
 	TickFormatTypeDate     = "%Y-%m-%d"
 	TickFormatTypeDateTime = "%Y-%m-%d %H:%M"
 )
@@ -90,31 +93,66 @@ func (r *KlineChart) SetTickFormatType(tickFormatType string) {
 	}
 }
 
+// SetPeriod 设置周期
+func (r *KlineChart) SetPeriod(period string) {
+	r.Period = period
+}
+
+// SetCalendar 设置日历系统
+// 可选值：LayoutCalendarGregorian（公历，默认）、LayoutCalendarChinese（农历）、LayoutCalendarTaiwan（台湾日历）等
+func (r *KlineChart) SetCalendar(calendar grob.LayoutCalendar) {
+	r.Calendar = calendar
+}
+
 type FigSettingOpt func(b *grob.Fig)
 
 func (r *KlineChart) LayoutObj(title string) *grob.Fig {
 	if r.TickFormatType == "" {
 		r.SetTickFormatType(TickFormatTypeDateTime)
 	}
+	
+	// 根据 TickFormatType 设置 tickformat，使用纯数字格式
+	// Plotly 使用 d3-time-format 语法：
+	// %Y = 年份（4位数字）
+	// %m = 月份（01-12）
+	// %d = 日期（01-31）
+	// %H = 小时（00-23）
+	// %M = 分钟（00-59）
+	var tickFormat string
+	if r.TickFormatType == TickFormatTypeDate {
+		// 日期格式：YYYY-MM-DD
+		tickFormat = "%Y-%m-%d"
+	} else {
+		// 日期时间格式：YYYY-MM-DD HH:MM
+		tickFormat = "%Y-%m-%d %H:%M"
+	}
+	
+	// 使用 date 类型，Plotly 会自动解析日期字符串
+	xaxis := &grob.LayoutXaxis{
+		Rangeslider: &grob.LayoutXaxisRangeslider{
+			Visible: types.False,
+		},
+		Tickmode:  "auto",
+		Type:      grob.LayoutXaxisTypeDate, // 设置为 date 类型，Plotly 会自动解析日期字符串
+		Tickformat: types.S(tickFormat),     // 设置纯数字格式，避免显示月份缩写
+	}
+	
+	xaxis2 := &grob.LayoutXaxis{
+		Rangeslider: &grob.LayoutXaxisRangeslider{
+			Visible: types.False,
+		},
+		Tickmode:  "auto",
+		Type:      grob.LayoutXaxisTypeDate, // 设置为 date 类型，Plotly 会自动解析日期字符串
+		Tickformat: types.S(tickFormat),     // 设置纯数字格式，避免显示月份缩写
+	}
+	
 	return &grob.Fig{
 		Layout: &grob.Layout{
 			Title: &grob.LayoutTitle{
 				Text: types.StringType(title),
 			},
-			Xaxis: &grob.LayoutXaxis{
-				Rangeslider: &grob.LayoutXaxisRangeslider{
-					Visible: types.False,
-				},
-				Tickmode:   "auto",
-				Tickformat: types.StringType(r.Settings.GetOrDefault("xaxis_tickformat", r.TickFormatType)),
-			},
-			XAxis2: &grob.LayoutXaxis{
-				Rangeslider: &grob.LayoutXaxisRangeslider{
-					Visible: types.False,
-				},
-				Tickmode:   "auto",
-				Tickformat: types.StringType(r.Settings.GetOrDefault("xaxis2_tickformat", r.TickFormatType)),
-			},
+			Xaxis: xaxis,
+			XAxis2: xaxis2,
 			// Yaxis: &grob.LayoutYaxis{
 			// 	// Tickformat:  ".6",
 			// 	// Hoverformat: ",.2r",
@@ -122,7 +160,7 @@ func (r *KlineChart) LayoutObj(title string) *grob.Fig {
 			// },
 			Autosize: types.True,
 			Height:   types.N(904),
-			Calendar: grob.LayoutCalendarChinese,
+			Calendar: r.getCalendar(),
 			Grid: &grob.LayoutGrid{
 				Rows:    types.I(2),
 				Columns: types.I(1),
@@ -135,8 +173,17 @@ func (r *KlineChart) LayoutObj(title string) *grob.Fig {
 func NewKlineChart(executor *api.MaiExecutor, title string) *KlineChart {
 	return &KlineChart{
 		Executor: executor,
+		Calendar: grob.LayoutCalendarGregorian, // 默认使用公历
 		// Fig:      layoutX(title),
 	}
+}
+
+// getCalendar 获取日历系统，如果未设置则返回默认值（公历）
+func (r *KlineChart) getCalendar() grob.LayoutCalendar {
+	if r.Calendar == "" {
+		return grob.LayoutCalendarGregorian // 默认使用公历
+	}
+	return r.Calendar
 }
 
 type KlineColorMode string
@@ -176,6 +223,21 @@ func (r KlineColorMode) SetColor(x *grob.Candlestick) {
 func (r *KlineChart) AsHtml(writePath string, opts ...FigSettingOpt) {
 	w := r.ObjInit(opts...)
 	offline.ToHtml(w, writePath)
+}
+
+// AsHtmlString 直接返回 HTML 字符串，不写入文件（更高效）
+func (r *KlineChart) AsHtmlString(opts ...FigSettingOpt) string {
+	w := r.ObjInit(opts...)
+	buf := offline.FigToBuffer(w)
+	htmlContent := buf.String()
+	
+	// 确保 HTML 包含 UTF-8 编码声明
+	if !strings.Contains(htmlContent, "charset") && !strings.Contains(htmlContent, "UTF-8") {
+		// 如果缺少 charset 声明，在 head 标签中添加
+		htmlContent = strings.Replace(htmlContent, "<head>", "<head>\n\t\t<meta charset=\"UTF-8\">", 1)
+	}
+	
+	return htmlContent
 }
 
 func (r *KlineChart) SetDefaultKlineChart() {
