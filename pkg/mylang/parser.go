@@ -253,12 +253,20 @@ func (p *Parser) parseStatement() Statement {
 		// 如果不是赋值语句，尝试解析为表达式语句
 		expr := p.parseExpression(LOWEST)
 		if expr != nil {
+			// 消费分号（如果存在）
+			if p.peekTok.Type == TokenSemicolon {
+				p.nextToken()
+			}
 			return &ExpressionStatement{Expression: expr}
 		}
 	default:
 		// 尝试解析为表达式语句
 		expr := p.parseExpression(LOWEST)
 		if expr != nil {
+			// 消费分号（如果存在）
+			if p.peekTok.Type == TokenSemicolon {
+				p.nextToken()
+			}
 			return &ExpressionStatement{Expression: expr}
 		}
 	}
@@ -299,7 +307,7 @@ func (p *Parser) parseAssignmentStatement() *AssignmentStatement {
 			p.nextToken()
 			stmt.SuffixParams = append(stmt.SuffixParams, p.curTok.Literal)
 			Logger.Println("Added suffix param:", p.curTok.Literal)
-			
+
 			// 如果下一个是逗号，继续解析
 			if p.peekTok.Type == TokenComma {
 				p.nextToken() // 跳过逗号
@@ -307,11 +315,15 @@ func (p *Parser) parseAssignmentStatement() *AssignmentStatement {
 				break
 			}
 		}
-	}
-
-	// 跳过分号（如果存在）
-	if p.peekTok.Type == TokenSemicolon {
-		p.nextToken()
+		// 有修饰符时，消费分号
+		if p.peekTok.Type == TokenSemicolon {
+			p.nextToken()
+		}
+	} else {
+		// 没有修饰符时，也消费分号
+		if p.peekTok.Type == TokenSemicolon {
+			p.nextToken()
+		}
 	}
 
 	return stmt
@@ -333,10 +345,12 @@ func (p *Parser) parseExpression(precedence int) Expression {
 		p.nextToken()
 		leftExp = p.parseFunctionCall(leftExp)
 		Logger.Println("Parsed function call, continuing with infix parsing")
+		// parseExpressionList 已经跳过了右括号，所以当前 token 应该是右括号之后的 token
 	}
 
-	// 继续解析二元表达式，直到遇到分号、右括号或EOF，或者优先级不够
-	for p.peekTok.Type != TokenSemicolon && p.peekTok.Type != TokenRParen && p.peekTok.Type != TokenEOF && precedence < p.peekPrecedence() {
+	// 继续解析二元表达式，直到遇到分号、逗号、右括号或EOF，或者优先级不够
+	// 逗号和右括号表示当前表达式的结束（在函数参数列表中等）
+	for p.peekTok.Type != TokenSemicolon && p.peekTok.Type != TokenComma && p.peekTok.Type != TokenRParen && p.peekTok.Type != TokenEOF && precedence < p.peekPrecedence() {
 		Logger.Println("Infix parsing, peek token:", p.peekTok.Literal)
 		infix := p.parseInfix(leftExp, p.peekTok.Type)
 		if infix == nil {
@@ -471,8 +485,11 @@ func (p *Parser) parseExpressionList(end TokenType) []Expression {
 		}
 	}
 
-	// 跳过右括号
-	if p.peekTok.Type == end {
+	// 确保消费结束token（右括号）
+	// 先检查 p.curTok，如果是结束token就消费
+	if p.curTok.Type == end {
+		p.nextToken()
+	} else if p.peekTok.Type == end {
 		p.nextToken()
 	}
 
