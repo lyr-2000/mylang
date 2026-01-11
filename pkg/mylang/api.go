@@ -137,6 +137,7 @@ func copySlice[T any](arr []T) []any {
 }
 
 // GetOutputVariableMap 获取所有画图变量
+// map[string]int, string为变量名， int为输出的顺序， 要获取变量值需要用 GetOutputVariable(int) 获取
 func (mi *MylangInterpreter) GetOutputVariableMap() map[string]int {
 	return mi.Interp.OutputVarMap
 }

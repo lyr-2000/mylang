@@ -241,10 +241,15 @@ func (m *MaiExecutor) ExecuteProgram() error {
 }
 
 // RunCode 执行麦语言代码，并返回执行结果字符串
-func (m *MaiExecutor) RunCode(code string) error {
+func (m *MaiExecutor) RunCode(code string) (err error) {
 	if m.PreCompiledProgram != nil {
 		log.Panicf("MaiExecutor is already compiled ,use ExecuteProgram() to execute the program")
 	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("run code panic: %v", r)
+		}
+	}()
 	// 假设这里可以调用核心麦语言解释器，实际应用中你需要替换为正确调用
 	// 例如: result, err := mytt.RunMaiCode(code)
 	m.Execute(code)

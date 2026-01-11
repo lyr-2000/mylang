@@ -213,16 +213,16 @@ func REF(S Series, N any) Series {
 
 	if _, ok := N.(int); ok {
 		isNumber = true
-	}else if _, ok := N.(float64); ok {
+	} else if _, ok := N.(float64); ok {
 		isNumber = true
-	}else if _,ok := N.([]float64); ok {
+	} else if _, ok := N.([]float64); ok {
 		isSlice = true
-	}else if _,ok := N.(Series); ok {
+	} else if _, ok := N.(Series); ok {
 		isSlice = true
-	}else {
+	} else {
 		panic("N 类型不支持")
 	}
-	
+
 	// 处理 N 为 int 的情况
 	if isNumber {
 		nInt := cast.ToInt(N)
@@ -238,7 +238,7 @@ func REF(S Series, N any) Series {
 		}
 		return result
 	}
-	
+
 	// 处理 N 为 Series 的情况
 	if isSlice {
 		nSeries := cast.ToFloat64Slice(N)
@@ -624,7 +624,7 @@ func RSI(CLOSE Series, N int) Series {
 	// 使用MAXS函数处理标量0的广播，对应Python的MAX(DIF, 0)
 	rs := DIV(SMA(MAXS(DIF, 0), N, 1), SMA(ABS(DIF), N, 1))
 	result := MULS(rs, 100)
-	
+
 	// 应用四舍五入到2位小数（对应Python的RD函数）
 	return RDS(result, 2)
 }
@@ -1464,9 +1464,19 @@ func ZTPRICE(Slice Series, n float64) Series {
 // 全局函数映射表
 var functionMap map[string]any
 
+func GetConst(s Series) Series {
+	result := make(Series, len(s))
+	last := s[len(s)-1]
+	for i := range s {
+		result[i] = last
+	}
+	return result
+}
+
 // init 初始化函数映射表
 func init() {
 	functionMap = map[string]any{
+		"CONST":   GetConst,
 		"DTPRICE": DTPRICE,
 		"ZTPRICE": ZTPRICE,
 		"IF":      IF,
@@ -1663,7 +1673,7 @@ func convertType(src reflect.Value, dstType reflect.Type, targetLength int) (ref
 	// 处理单个值转切片的转换
 	if dstType.Kind() == reflect.Slice {
 		dstElemType := dstType.Elem()
-		
+
 		// 单个 bool -> []bool (广播到目标长度)
 		if srcType.Kind() == reflect.Bool && dstElemType.Kind() == reflect.Bool {
 			boolVal := src.Bool()
@@ -1673,7 +1683,7 @@ func convertType(src reflect.Value, dstType reflect.Type, targetLength int) (ref
 			}
 			return reflect.ValueOf(result), nil
 		}
-		
+
 		// 单个 float64 -> []float64 (Series) (广播到目标长度)
 		if srcType.Kind() == reflect.Float64 && dstElemType.Kind() == reflect.Float64 {
 			floatVal := src.Float()
@@ -1683,7 +1693,7 @@ func convertType(src reflect.Value, dstType reflect.Type, targetLength int) (ref
 			}
 			return reflect.ValueOf(result), nil
 		}
-		
+
 		// 单个 int -> []float64 (Series) (广播到目标长度)
 		if srcType.Kind() == reflect.Int && dstElemType.Kind() == reflect.Float64 {
 			intVal := src.Int()

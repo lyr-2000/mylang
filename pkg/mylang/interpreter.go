@@ -152,6 +152,12 @@ type Interpreter struct {
 	Err                  error
 	SkipNilPointerCheck bool //if false, will panic on variable is nil
 }
+
+func (r *Interpreter) GetSuffixParams(name string) ([]string, bool) {
+	params, ok := r.suffixParams[name]
+	return params, ok
+}
+
 func (r *Interpreter) getOutputVariableId() int {
 	r._idx++
 	return r._idx
@@ -244,6 +250,18 @@ func (i *Interpreter) evalUnaryExpression(ue *UnaryExpression) interface{} {
 	switch ue.Operator {
 	case "NOT", "not":
 		return i.evalLogicalNot(right)
+	case "-": // 处理负数
+		if f, ok := right.(float64); ok {
+			return -f
+		} else if arr, ok := i.toFloat64Slice(right); ok {
+			result := make([]float64, len(arr))
+			for idx, val := range arr {
+				result[idx] = -val
+			}
+			return result
+		}
+		// 其他类型不支持负号，返回 NaN 或错误
+		return math.NaN()
 	}
 
 	return nil

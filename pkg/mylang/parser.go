@@ -373,7 +373,7 @@ func (p *Parser) parsePrefix(tokenType TokenType) func() Expression {
 		return p.parseStringLiteral
 	case TokenLParen:
 		return p.parseGroupedExpression
-	case TokenNot:
+	case TokenMinus, TokenNot: // 支持负号作为一元运算符
 		return p.parseUnaryExpression
 	}
 	return nil

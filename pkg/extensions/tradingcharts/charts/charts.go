@@ -166,6 +166,9 @@ func (r *KlineChart) LayoutObj(title string) *grob.Fig {
 				Columns: types.I(1),
 				Pattern: "independent",
 			},
+			Legend: &grob.LayoutLegend{
+				Visible: types.True,
+			},
 		},
 	}
 }
