@@ -1574,6 +1574,7 @@ func init() {
 		"QRR":     QRR,
 		"SHO":     SHO,
 		"LON":     LON,
+		"BACKSET": BACKSET,
 	}
 }
 
@@ -1769,4 +1770,79 @@ func GetAllFuncNames() []string {
 	funcNames = append(funcNames, seriesMethods...)
 
 	return funcNames
+}
+
+
+// BACKSET 属于未来函数,将当前位置到若干周期前的数据设为1.
+// 用法: BACKSET(S,N),若S非0,则将当前位置到N周期前的数值设为1.
+// 例如: BACKSET(CLOSE>OPEN,2) 若收阳则将该周期及前一周期数值设为1,否则为0.
+// S 为条件序列，非零且非 NaN 视为成立；N 可为 int、float64 或 []int；为序列时按索引取 N[i]，缺失或 N≤0 时按 1 处理。
+func BACKSET(S Series, N any) Series {
+	if len(S) == 0 {
+		return nil
+	}
+	result := make(Series, len(S))
+
+	getN := func(i int) int {
+		n := 1
+		switch v := N.(type) {
+		case int:
+			n = v
+		case float64:
+			n = cast.ToInt(N)
+		case []int:
+			if i < len(v) {
+				n = v[i]
+			}
+		default:
+			n = cast.ToInt(N)
+		}
+		if n <= 0 {
+			n = 1
+		}
+		return n
+	}
+
+	cond := func(i int) bool {
+		v := S.At(i)
+		return !math.IsNaN(v) && v != 0
+	}
+
+	if nSlice, ok := N.([]int); ok {
+		for i := 0; i < len(S); i++ {
+			if !cond(i) {
+				continue
+			}
+			n := 1
+			if i < len(nSlice) {
+				n = nSlice[i]
+			}
+			if n <= 0 {
+				n = 1
+			}
+			start := i - n + 1
+			if start < 0 {
+				start = 0
+			}
+			for j := start; j <= i; j++ {
+				result[j] = 1
+			}
+		}
+	} else {
+		nVal := getN(0)
+		for i := 0; i < len(S); i++ {
+			if !cond(i) {
+				continue
+			}
+			start := i - nVal + 1
+			if start < 0 {
+				start = 0
+			}
+			for j := start; j <= i; j++ {
+				result[j] = 1
+			}
+		}
+	}
+
+	return result
 }
