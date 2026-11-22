@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"math"
 	"reflect"
-
-	"github.com/spf13/cast"
 )
 
 // Series 序列类型，用于表示时间序列数据
@@ -57,6 +55,19 @@ func (s Series) Slice(start, end int) Series {
 func RD(N float64, D int) float64 {
 	multiplier := math.Pow(10, float64(D))
 	return math.Round(N*multiplier) / multiplier
+}
+
+// NZ 把序列里的 NaN 替换为 0，便于迁移 Pine 的 nz() 写法。
+func NZ(S Series) Series {
+	result := make(Series, len(S))
+	for i, v := range S {
+		if math.IsNaN(v) {
+			result[i] = 0
+			continue
+		}
+		result[i] = v
+	}
+	return result
 }
 
 // RDS 对序列进行四舍五入取D位小数
@@ -205,27 +216,25 @@ func IF(S []bool, A, B Series) Series {
 }
 
 // REF 对序列整体下移动N，返回序列
-// N 可以是 int 或 Series
+// N 可以是 int/float64 或 Series/[]float64（逐位置偏移）
 func REF(S Series, N any) Series {
-	result := make(Series, len(S))
-	var isNumber bool
-	var isSlice bool
-
-	if _, ok := N.(int); ok {
-		isNumber = true
-	} else if _, ok := N.(float64); ok {
-		isNumber = true
-	} else if _, ok := N.([]float64); ok {
-		isSlice = true
-	} else if _, ok := N.(Series); ok {
-		isSlice = true
-	} else {
-		panic("N 类型不支持")
-	}
-
-	// 处理 N 为 int 的情况
-	if isNumber {
-		nInt := cast.ToInt(N)
+	switch n := N.(type) {
+	case int:
+		result := make(Series, len(S))
+		if n <= 0 {
+			return S
+		}
+		for i := range S {
+			if i >= n {
+				result[i] = S[i-n]
+			} else {
+				result[i] = math.NaN()
+			}
+		}
+		return result
+	case float64:
+		result := make(Series, len(S))
+		nInt := int(n)
 		if nInt <= 0 {
 			return S
 		}
@@ -237,32 +246,32 @@ func REF(S Series, N any) Series {
 			}
 		}
 		return result
+	case Series:
+		return refSeries(S, []float64(n))
+	case []float64:
+		return refSeries(S, n)
+	default:
+		panic("N 类型不支持")
 	}
+}
 
-	// 处理 N 为 Series 的情况
-	if isSlice {
-		nSeries := cast.ToFloat64Slice(N)
-		for i := range S {
-			if i < len(nSeries) && !math.IsNaN(nSeries[i]) {
-				nInt := int(nSeries[i])
-				idx := i - nInt
-				if idx >= 0 && idx < len(S) {
-					result[i] = S[idx]
-				} else {
-					result[i] = math.NaN()
-				}
+// refSeries 处理 N 为序列的 REF：逐位置用不同偏移回看。
+func refSeries(S Series, nSeries []float64) Series {
+	result := make(Series, len(S))
+	for i := range S {
+		if i < len(nSeries) && !math.IsNaN(nSeries[i]) {
+			nInt := int(nSeries[i])
+			idx := i - nInt
+			if idx >= 0 && idx < len(S) {
+				result[i] = S[idx]
 			} else {
 				result[i] = math.NaN()
 			}
+		} else {
+			result[i] = math.NaN()
 		}
-		return result
 	}
-	panic("N 类型不支持")
-	// 如果 N 类型不支持，返回 NaN
-	// for i := range S {
-	// 	result[i] = math.NaN()
-	// }
-	// return result
+	return result
 }
 
 // DIFF 前一个值减后一个值
@@ -1106,6 +1115,260 @@ func BARSLAST(S []bool) Series {
 	return result
 }
 
+// BARSLASTCOUNT 统计连续满足条件的周期数（by jqz1226）。
+// BARSLASTCOUNT(CLOSE>OPEN) 表示连续收阳的周期数；条件一旦为假即归零重计。
+// 对应 MyTT.py 的 BARSLASTCOUNT，语义等价于 Pine 的递推 cnt = cond ? cnt+1 : 0。
+func BARSLASTCOUNT(S []bool) Series {
+	result := make(Series, len(S))
+	cnt := 0
+	for i, cond := range S {
+		if cond {
+			cnt++
+		} else {
+			cnt = 0
+		}
+		result[i] = float64(cnt)
+	}
+	return result
+}
+
+// REFX 未来引用：取未来 N 周期的值（REF 的反向，shift 方向相反）。
+// N 可以是 int/float64 标量或 Series。
+// 注意：这是未来函数，回测中引用未来数据会引入未来函数偏差，仅用于指标库完整性。
+func REFX(S Series, N any) Series {
+	result := make(Series, len(S))
+	for i := range result {
+		result[i] = math.NaN()
+	}
+
+	assign := func(i, n int) {
+		idx := i + n
+		if idx >= 0 && idx < len(S) {
+			result[i] = S[idx]
+		}
+	}
+
+	switch n := N.(type) {
+	case int:
+		nInt := int(math.Abs(float64(n)))
+		for i := range S {
+			assign(i, nInt)
+		}
+	case float64:
+		nInt := int(math.Abs(n))
+		for i := range S {
+			assign(i, nInt)
+		}
+	case []float64:
+		for i := range S {
+			if i < len(n) && !math.IsNaN(n[i]) {
+				assign(i, int(math.Abs(n[i])))
+			}
+		}
+	case Series:
+		for i := range S {
+			if i < len(n) && !math.IsNaN(n[i]) {
+				assign(i, int(math.Abs(n[i])))
+			}
+		}
+	default:
+		panic("REFX: N 类型不支持")
+	}
+	return result
+}
+
+// Number 序列转 int 并填充 NaN 为 0（对应 MyTT.py 的 Number：astype(int).fillna(0)）。
+func Number(S Series) Series {
+	result := make(Series, len(S))
+	for i, v := range S {
+		if math.IsNaN(v) {
+			result[i] = 0
+		} else {
+			result[i] = float64(int(v))
+		}
+	}
+	return result
+}
+
+// BARSSINCE N周期内第一次S条件成立到现在的周期数；N<=0 表示从序列起点（全历史）。
+// 通达信语义：返回「窗口内第一个成立」的 bar 到当前的周期数。
+// 注意 MyTT.py 的 BARSSINCE 实现有误（d[i]=int(i) 仅返回索引序列），这里按通达信语义正确实现。
+func BARSSINCE(S []bool, N int) Series {
+	result := make(Series, len(S))
+	if N <= 0 {
+		N = len(S)
+	}
+	for i := range S {
+		start := i - N + 1
+		if start < 0 {
+			start = 0
+		}
+		found := false
+		for j := start; j <= i; j++ {
+			if j >= 0 && j < len(S) && S[j] {
+				result[i] = float64(i - j)
+				found = true
+				break
+			}
+		}
+		if !found {
+			result[i] = math.NaN()
+		}
+	}
+	return result
+}
+
+// SUMBARS 通达信 SumBars：从当前 bar 往前累加 X，直到累计 >= A，返回周期数。
+// 例如 SUMBARS(VOL, CAPITAL) 求完全换手的周期数。X 必须全为正；A 可以是标量或序列。
+// 对应 MyTT.py 的 SUMBARSFAST（Go 版用朴素 O(n²) 实现，语义等价）。
+func SUMBARS(X Series, A any) Series {
+	result := make(Series, len(X))
+	for i := range result {
+		result[i] = math.NaN()
+	}
+
+	var aSeries []float64
+	switch a := A.(type) {
+	case int:
+		aSeries = make([]float64, len(X))
+		for i := range aSeries {
+			aSeries[i] = float64(a)
+		}
+	case float64:
+		aSeries = make([]float64, len(X))
+		for i := range aSeries {
+			aSeries[i] = a
+		}
+	case []float64:
+		aSeries = a
+	case Series:
+		aSeries = []float64(a)
+	default:
+		panic("SUMBARS: A 类型不支持")
+	}
+
+	for i := range X {
+		if X[i] <= 0 {
+			panic("SUMBARS: 数组X的每个元素都必须大于0")
+		}
+		target := 0.0
+		if i < len(aSeries) {
+			target = aSeries[i]
+		}
+		sum := 0.0
+		for j := i; j >= 0; j-- {
+			sum += X[j]
+			if sum >= target {
+				result[i] = float64(i - j + 1)
+				break
+			}
+		}
+	}
+	return result
+}
+
+// DSMA 偏差自适应移动平均线（Deviation Scaled Moving Average, Ehlers）。
+// 对应 MyTT.py 的 DSMA；最后一步用「序列平滑因子的 DMA」递推（Go 的 DMA 只支持标量）。
+func DSMA(X Series, N int) Series {
+	if N <= 0 {
+		return X
+	}
+	a1 := math.Exp(-1.414 * math.Pi * 2 / float64(N))
+	b1 := 2 * a1 * math.Cos(1.414*math.Pi*2/float64(N))
+	c2 := b1
+	c3 := -a1 * a1
+	c1 := 1 - c2 - c3
+
+	// Zeros = pad(X[2:] - X[:-2], (2, 0))：二阶差分，前补 2 个 0。
+	zeros := make(Series, len(X))
+	for i := 2; i < len(X); i++ {
+		zeros[i] = X[i] - X[i-2]
+	}
+
+	// Filt 递推。复刻 numpy 负数索引边界：i=0 时 Zeros[-1] 取最后元素，
+	// Filt[-1]/Filt[-2] 初始为 0（循环尚未赋值到最后）。
+	filt := make(Series, len(X))
+	for i := 0; i < len(X); i++ {
+		zPrev := 0.0
+		if i >= 1 {
+			zPrev = zeros[i-1]
+		} else if len(X) > 0 {
+			zPrev = zeros[len(X)-1]
+		}
+		var f1, f2 float64
+		if i >= 1 {
+			f1 = filt[i-1]
+		}
+		if i >= 2 {
+			f2 = filt[i-2]
+		}
+		filt[i] = c1*(zeros[i]+zPrev)/2 + c2*f1 + c3*f2
+	}
+
+	// RMS = sqrt(SUM(Filt², N) / N)；窗口不足 N 时为 NaN（对齐 pandas rolling(N)）。
+	sq := make(Series, len(X))
+	for i := range sq {
+		sq[i] = filt[i] * filt[i]
+	}
+	sumSq := SUM(sq, N)
+
+	alpha := make(Series, len(X))
+	for i := range alpha {
+		if !math.IsNaN(sumSq[i]) && sumSq[i] > 0 {
+			rms := math.Sqrt(sumSq[i] / float64(N))
+			alpha[i] = math.Abs(filt[i]/rms) * 5 / float64(N)
+		} else {
+			alpha[i] = math.NaN()
+		}
+	}
+
+	// DMA(X, alpha)：序列平滑因子递推；alpha 为 NaN 时按 Python 用 1.0。
+	result := make(Series, len(X))
+	result[0] = X[0]
+	for i := 1; i < len(X); i++ {
+		a := alpha[i]
+		if math.IsNaN(a) {
+			a = 1.0
+		}
+		result[i] = a*X[i] + (1-a)*result[i-1]
+	}
+	return result
+}
+
+// BuySignal 买入信号序列：条件成立处为信号价位，否则 NaN。
+// 作为独立类型（而非普通 Series），让宿主在 Output 里识别出「这是买入信号」。
+type BuySignal Series
+
+// SellSignal 卖出信号序列：条件成立处为信号价位，否则 NaN。
+type SellSignal Series
+
+// BUY 买入信号：cond 成立（非 0 且非 NaN）处返回 price，否则 NaN。
+// 对应通达信 BUY(条件, 价格)，用于标记买入点位。
+func BUY(cond Series, price Series) BuySignal {
+	result := make(Series, len(price))
+	for i := range result {
+		if i < len(cond) && i < len(price) && cond[i] != 0 && !math.IsNaN(cond[i]) {
+			result[i] = price[i]
+		} else {
+			result[i] = math.NaN()
+		}
+	}
+	return BuySignal(result)
+}
+
+// SELL 卖出信号：cond 成立处返回 price，否则 NaN。
+func SELL(cond Series, price Series) SellSignal {
+	result := make(Series, len(price))
+	for i := range result {
+		if i < len(cond) && i < len(price) && cond[i] != 0 && !math.IsNaN(cond[i]) {
+			result[i] = price[i]
+		} else {
+			result[i] = math.NaN()
+		}
+	}
+	return SellSignal(result)
+}
+
 // VALUEWHEN 当S条件成立时，取X的当前值，否则取VALUEWHEN的上个成立时的X值
 func VALUEWHEN(S []bool, X Series) Series {
 	result := make(Series, len(S))
@@ -1477,12 +1740,14 @@ func GetConst(s Series) Series {
 func init() {
 	functionMap = map[string]any{
 		"CONST":   GetConst,
+		"NUMBER":  Number,
 		"DTPRICE": DTPRICE,
 		"ZTPRICE": ZTPRICE,
 		"IF":      IF,
 		// 0级核心工具函数
 		"RD":      RD,
 		"RET":     RET,
+		"NZ":      NZ,
 		"ABS":     ABS,
 		"LN":      LN,
 		"POW":     POW,
@@ -1493,6 +1758,7 @@ func init() {
 		"MAX":     MAX,
 		"MIN":     MIN,
 		"REF":     REF,
+		"REFX":    REFX,
 		"DIFF":    DIFF,
 		"STD":     STD,
 		"SUM":     SUM,
@@ -1508,21 +1774,24 @@ func init() {
 		"FORCAST": FORCAST,
 
 		// 1级应用层函数
-		"COUNT":      COUNT,
-		"EVERY":      EVERY,
-		"EXIST":      EXIST,
-		"CROSS":      CROSS,
-		"LONGCROSS":  LONGCROSS,
-		"BARSLAST":   BARSLAST,
-		"VALUEWHEN":  VALUEWHEN,
-		"BETWEEN":    BETWEEN,
-		"FILTER":     FILTER,
-		"LAST":       LAST,
-		"BARSSINCEN": BARSSINCEN,
-		"HHVBARS":    HHVBARS,
-		"LLVBARS":    LLVBARS,
-		"TOPRANGE":   TOPRANGE,
-		"LOWRANGE":   LOWRANGE,
+		"COUNT":         COUNT,
+		"EVERY":         EVERY,
+		"EXIST":         EXIST,
+		"CROSS":         CROSS,
+		"LONGCROSS":     LONGCROSS,
+		"BARSLAST":      BARSLAST,
+		"BARSLASTCOUNT": BARSLASTCOUNT,
+		"VALUEWHEN":     VALUEWHEN,
+		"BETWEEN":       BETWEEN,
+		"FILTER":        FILTER,
+		"LAST":          LAST,
+		"BARSSINCEN":    BARSSINCEN,
+		"BARSSINCE":     BARSSINCE,
+		"SUMBARS":       SUMBARS,
+		"HHVBARS":       HHVBARS,
+		"LLVBARS":       LLVBARS,
+		"TOPRANGE":      TOPRANGE,
+		"LOWRANGE":      LOWRANGE,
 
 		// 序列运算函数
 		"ADD": ADD,
@@ -1559,6 +1828,7 @@ func init() {
 		"DPO":   DPO,
 		"BRAR":  BRAR,
 		"DFMA":  DFMA,
+		"DSMA":  DSMA,
 		"MTM":   MTM,
 		"MASS":  MASS,
 		"ROC":   ROC,
@@ -1574,6 +1844,10 @@ func init() {
 		"QRR":     QRR,
 		"SHO":     SHO,
 		"LON":     LON,
+
+		// 信号函数
+		"BUY":  BUY,
+		"SELL": SELL,
 	}
 }
 

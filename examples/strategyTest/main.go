@@ -8,18 +8,25 @@ import (
 	"sort"
 
 	"github.com/lyr-2000/mylang/pkg/api"
-	"github.com/lyr-2000/mylang/pkg/extensions/tradingcharts/charts"
-	// grob "github.com/lyr-2000/mylang/pkg/extensions/tradingcharts/go-plotly/generated/v2.34.0/graph_objects"
-	"github.com/lyr-2000/mylang/pkg/extensions/tradingcharts/go-plotly/pkg/types"
 )
 
 type Klinedef struct {
 	// {"version":0,"originKl":null,"klines":[{"o
-	Klines []*charts.Ohlcv
+	Klines []*Ohlcv
 }
 
-func S(s string) types.StringType {
-	return types.S(s)
+// Ohlcv 是 K 线的宽松 JSON 解析辅助（原 charts.Ohlcv 内联，避免依赖图表库）。
+type Ohlcv struct {
+	Store map[string]any
+}
+
+func (b *Ohlcv) GetAny(name string) any {
+	return b.Store[name]
+}
+
+func (b *Ohlcv) GetFloat64(name string) float64 {
+	v, _ := b.Store[name].(float64)
+	return v
 }
 
 // 加载k线，执行指标，并且生成图表

@@ -159,9 +159,9 @@ normal_var:=HIGH+CLOSE,COLORGREEN;
 
 	// 检查画图变量
 	drawingVars := interp.GetOutputVariableMap()
-	expectedDrawingVars := map[string]struct{}{
-		"drawing_var1": {},
-		"drawing_var2": {},
+	expectedDrawingVars := map[string]int{
+		"drawing_var1": 1,
+		"drawing_var2": 2,
 	}
 
 	if !reflect.DeepEqual(drawingVars, expectedDrawingVars) {
@@ -396,5 +396,54 @@ func TestMylangInterpreterComplexExpressionsWithSuffixParams(t *testing.T) {
 				t.Errorf("GetAllSuffixParams() = %v, want %v", allParams, tt.expectedParams)
 			}
 		})
+	}
+}
+
+func TestMylangInterpreterResetKeepsFunctionsAndGetter(t *testing.T) {
+	interp := NewMylangInterpreter()
+	interp.RegisterFunction("ONE", func(args []interface{}) interface{} { return 1.0 })
+	interp.Interp.CustomVariableGetter = func(name string) any {
+		if name == "NOW" {
+			return 2.0
+		}
+		return nil
+	}
+	interp.SetVar("CLOSE", []float64{1, 2, 3})
+
+	interp.Reset()
+
+	if _, ok := interp.GetFunctionOnly("ONE"); !ok {
+		t.Error("Reset() should keep registered functions")
+	}
+	if interp.Interp.CustomVariableGetter == nil {
+		t.Error("Reset() should keep CustomVariableGetter")
+	}
+	if _, ok := interp.GetVariable("CLOSE"); ok {
+		t.Error("Reset() should clear variables")
+	}
+}
+
+func TestMylangInterpreterOrderedOutputVariables(t *testing.T) {
+	interp := NewMylangInterpreter()
+	interp.SetVar("CLOSE", []float64{1, 2, 3})
+	interp.Execute("A:CLOSE,COLORRED;\nB:CLOSE,COLORBLUE;\nC:=CLOSE;")
+
+	vars := interp.OrderedOutputVariables()
+	if len(vars) != 2 {
+		t.Fatalf("OrderedOutputVariables() = %v, want 2 entries", vars)
+	}
+	if vars[0].Name != "A" || vars[1].Name != "B" {
+		t.Fatalf("order = %q,%q, want A,B", vars[0].Name, vars[1].Name)
+	}
+	if len(vars[0].SuffixParams) != 1 || vars[0].SuffixParams[0] != "COLORRED" {
+		t.Errorf("A suffix = %v, want [COLORRED]", vars[0].SuffixParams)
+	}
+}
+
+func TestMylangInterpreterUndefinedNameSetsErr(t *testing.T) {
+	interp := NewMylangInterpreter()
+	interp.Execute("X:NOT_EXIST(CLOSE);")
+	if interp.Err == nil {
+		t.Error("undefined function should set Err instead of panic")
 	}
 }

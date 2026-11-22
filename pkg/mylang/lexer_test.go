@@ -14,6 +14,21 @@ func TestTrimComment(t *testing.T) {
 			t.Errorf("TrimComment() = %v, want %v", got, want)
 		}
 	})
+	t.Run("line-comment", func(t *testing.T) {
+		code := "//@title demo\nX:MA(CLOSE,2); // trailing\n"
+		got := TrimComment(code)
+		want := "\nX:MA(CLOSE,2); \n"
+		if got != want {
+			t.Errorf("TrimComment() = %q, want %q", got, want)
+		}
+	})
+	t.Run("keep-string", func(t *testing.T) {
+		code := "X:NAMELIKE('S//T');"
+		got := TrimComment(code)
+		if got != code {
+			t.Errorf("TrimComment() = %q, want unchanged %q", got, code)
+		}
+	})
 }
 
 func TestLexerSuffixParams(t *testing.T) {
@@ -136,7 +151,7 @@ func TestLexerSyntaxValidation(t *testing.T) {
 			lexer := NewLexer(tt.input)
 			var tokens []Token
 			hasError := false
-			
+
 			for {
 				token := lexer.NextToken()
 				tokens = append(tokens, token)

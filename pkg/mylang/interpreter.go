@@ -3,9 +3,8 @@ package mylang
 import (
 	"fmt"
 	"io"
-	"log"
-	"math"
 	stdlog "log"
+	"math"
 
 	// "os"
 
@@ -32,32 +31,32 @@ func floatEqual(a, b float64) bool {
 	if math.IsNaN(a) || math.IsNaN(b) {
 		return false
 	}
-	
+
 	// 获取整数部分
 	aInt := math.Trunc(a)
 	bInt := math.Trunc(b)
-	
+
 	// 整数部分必须完全相等
 	if aInt != bInt {
 		return false
 	}
-	
+
 	// 如果两个数都接近0，使用绝对误差
 	if math.Abs(a) < 1e-6 && math.Abs(b) < 1e-6 {
 		return math.Abs(a-b) < 1e-6
 	}
-	
+
 	// 如果差异小于绝对误差阈值，认为相等
 	if math.Abs(a-b) < 1e-10 {
 		return true
 	}
-	
+
 	// 使用相对误差，误差 < 1%（相对于整个数）
 	maxVal := math.Max(math.Abs(a), math.Abs(b))
 	if maxVal < 1e-10 {
 		return true
 	}
-	
+
 	relativeError := math.Abs(a-b) / maxVal
 	return relativeError < 0.01
 }
@@ -72,7 +71,9 @@ type Environment struct {
 func (e *Environment) DelAllVars() {
 	x := e
 	for x != nil {
-		x.variables = make(map[string]interface{})
+		for k := range x.variables {
+			delete(x.variables, k)
+		}
 		x = x.outer
 	}
 }
@@ -142,15 +143,29 @@ func (e *Environment) GetFunction(name string) (interface{}, bool) {
 	return nil, false
 }
 
+// Context 是一次执行的宿主上下文。
+// 横截面函数（INSORT/INSUM 等）依赖 Symbol/Ts/DataVersion 才能工作。
+type Context struct {
+	Symbol      string
+	Ts          []int64
+	DataVersion int64
+	Strict      bool
+	MaxBars     int
+}
+
+// ContextFunc 是可以读取执行上下文的宿主函数。
+type ContextFunc func(Context, []interface{}) interface{}
+
 // Interpreter 代表解释器
 type Interpreter struct {
 	env                  *Environment
 	CustomVariableGetter func(name string) any // if nil, use env.Get(name) to get the variable value
-	OutputVarMap         map[string]int   // 记录画图变量
+	Context              Context               // 当前执行上下文
+	OutputVarMap         map[string]int        // 记录画图变量
 	_idx                 int                   //记录画图变量
 	suffixParams         map[string][]string   // 记录变量名到修饰符的映射
 	Err                  error
-	SkipNilPointerCheck bool //if false, will panic on variable is nil
+	SkipNilPointerCheck  bool //if false, will panic on variable is nil
 }
 
 func (r *Interpreter) GetSuffixParams(name string) ([]string, bool) {
@@ -216,6 +231,9 @@ func (i *Interpreter) evalProgram(program *Program) interface{} {
 		Logger.Println("Evaluating statement", idx)
 		result = i.Eval(statement)
 		Logger.Println("Result of statement", idx, ":", result)
+		if i.Err != nil {
+			break
+		}
 	}
 	return result
 }
@@ -357,7 +375,8 @@ func (i *Interpreter) evalBinaryExpression(be *BinaryExpression) interface{} {
 		return result
 	} else if larrOk && rarrOk { // 数组与数组操作
 		if len(leftArr) != len(rightArr) {
-			log.Printf("Array length mismatch: %d != %d %#v", len(leftArr), len(rightArr),be)
+			i.Err = fmt.Errorf("数组长度不匹配: %d != %d", len(leftArr), len(rightArr))
+			Logger.Printf("Array length mismatch: %d != %d %#v", len(leftArr), len(rightArr), be)
 			return nil
 		}
 		result := make([]float64, len(leftArr))
@@ -396,40 +415,69 @@ func (i *Interpreter) evalIdentifier(symbol *Identifier) interface{} {
 	}
 	Logger.Println("Identifier", symbol.Value, "not found")
 	if !i.SkipNilPointerCheck {
-		log.Panicf("Variable Miss: %s",symbol.Value)
+		i.Err = fmt.Errorf("变量未定义: %s", symbol.Value)
 	}
 	return nil
 }
 
 func (i *Interpreter) evalFunctionCall(fc *FunctionCall) interface{} {
-	
 	Logger.Println("Entered evalFunctionCall")
-	function := i.Eval(fc.Function)
+	name := fc.Function.String()
 	args := []interface{}{}
 	for _, arg := range fc.Arguments {
 		argVal := i.Eval(arg)
 		Logger.Println("Argument value:", argVal)
 		args = append(args, argVal)
 	}
+	if i.Err != nil {
+		return nil
+	}
 
-	if fn, ok := function.(func([]interface{}) interface{}); ok {
-		// defer func() {
-		// 	err := recover()
-		// 	if err != nil {
-		// 		Logger.Printf("panic: %v", err)
-		// 		i.Err = fmt.Errorf("function call %s %v not found", fc.Function.String(), err)
-		// 	}
-	
-		// }()
-		result := fn(args)
-		Logger.Println("Function call result:", result)
-		return result
+	function, ok := i.env.Get(name)
+	if !ok {
+		if !i.SkipNilPointerCheck {
+			i.Err = fmt.Errorf("函数未定义: %s", name)
+		}
+		return nil
 	}
-	if !i.SkipNilPointerCheck {
-		log.Panic("Function not found ", fc.Function.String())
+	var result interface{}
+	switch fn := function.(type) {
+	case func([]interface{}) interface{}:
+		result = i.callFunction(name, fn, args)
+	case ContextFunc:
+		result = i.callContextFunction(name, fn, args)
+	default:
+		i.Err = fmt.Errorf("标识符不可调用: %s", name)
+		return nil
 	}
-	Logger.Println("Function not callable:", function)
-	return nil
+	Logger.Println("Function call result:", result)
+	return result
+}
+
+// callFunction 隔离自定义函数的 panic，并识别函数返回的 error。
+func (i *Interpreter) callFunction(name string, fn func([]interface{}) interface{}, args []interface{}) interface{} {
+	return i.safeCall(name, func() interface{} { return fn(args) })
+}
+
+// callContextFunction 与 callFunction 等价，但把执行上下文传给宿主函数。
+func (i *Interpreter) callContextFunction(name string, fn ContextFunc, args []interface{}) interface{} {
+	return i.safeCall(name, func() interface{} { return fn(i.Context, args) })
+}
+
+// safeCall 统一处理 panic 与 error 返回值。
+func (i *Interpreter) safeCall(name string, invoke func() interface{}) (result interface{}) {
+	defer func() {
+		if r := recover(); r != nil {
+			i.Err = fmt.Errorf("函数 %s 执行异常: %v", name, r)
+			result = nil
+		}
+	}()
+	result = invoke()
+	if err, ok := result.(error); ok {
+		i.Err = err
+		return nil
+	}
+	return result
 }
 
 // evalLogicalAnd 实现逻辑 AND 运算
@@ -581,30 +629,30 @@ func (i *Interpreter) compareArrays(leftArr, rightArr []float64, operator string
 			} else {
 				result[i] = 0
 			}
-	case ">=":
-		if leftArr[i] >= rightArr[i] {
-			result[i] = 1
-		} else {
-			result[i] = 0
-		}
-	case "<=":
-		if leftArr[i] <= rightArr[i] {
-			result[i] = 1
-		} else {
-			result[i] = 0
-		}
-	case "==", "=":
-		if floatEqual(leftArr[i], rightArr[i]) {
-			result[i] = 1
-		} else {
-			result[i] = 0
-		}
-	case "!=":
-		if !floatEqual(leftArr[i], rightArr[i]) {
-			result[i] = 1
-		} else {
-			result[i] = 0
-		}
+		case ">=":
+			if leftArr[i] >= rightArr[i] {
+				result[i] = 1
+			} else {
+				result[i] = 0
+			}
+		case "<=":
+			if leftArr[i] <= rightArr[i] {
+				result[i] = 1
+			} else {
+				result[i] = 0
+			}
+		case "==", "=":
+			if floatEqual(leftArr[i], rightArr[i]) {
+				result[i] = 1
+			} else {
+				result[i] = 0
+			}
+		case "!=":
+			if !floatEqual(leftArr[i], rightArr[i]) {
+				result[i] = 1
+			} else {
+				result[i] = 0
+			}
 		default:
 			result[i] = 0
 		}

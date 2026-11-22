@@ -157,9 +157,9 @@ normal_var:=HIGH+CLOSE,COLORGREEN;
 
 	// 检查画图变量
 	drawingVars := interp.GetOutputVariableMap()
-	expectedDrawingVars := map[string]struct{}{
-		"drawing_var1": {},
-		"drawing_var2": {},
+	expectedDrawingVars := map[string]int{
+		"drawing_var1": 1,
+		"drawing_var2": 2,
 	}
 
 	if !reflect.DeepEqual(drawingVars, expectedDrawingVars) {
