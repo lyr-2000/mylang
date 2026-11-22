@@ -71,7 +71,7 @@ func (l *Lexer) readChar() {
 		var size int
 		l.ch, size = utf8.DecodeRuneInString(l.input[l.readPos:])
 		l.readPos += size
-		
+
 		// 更新行号和列号
 		if l.ch == '\n' {
 			l.line++
@@ -94,7 +94,7 @@ func (l *Lexer) NextToken() Token {
 	var tok Token
 
 	l.skipWhitespace()
-	
+
 	// 设置当前token的行号和列号
 	tok.Line = l.line
 	tok.Column = l.column
@@ -252,28 +252,60 @@ func isDigit(ch rune) bool {
 	return unicode.IsDigit(ch)
 }
 
-// TrimComment 去除代码中的注释
+// TrimComment 去除代码中的注释：
+//   - { ... } 块注释（可嵌套）
+//   - // ... 行注释，便于脚本携带 //@title 等宿主元数据
+//
+// 单引号字符串内的内容按原文保留。
 func TrimComment(code string) string {
-	if !strings.Contains(code, "{") {
-		return code
-	}
-	// 注释: { 括号里面是注释内容 }
 	var out strings.Builder
-	inComment := byte(0)
-	for i := 0; i < len(code); i++ {
+	out.Grow(len(code))
+	inBlock := 0
+	inString := false
+	for i := 0; i < len(code); {
 		ch := code[i]
-		if inComment == 0 {
-			if ch == '{' {
-				inComment += 1
-			} else {
-				out.WriteByte(ch)
+		if inString {
+			out.WriteByte(ch)
+			i++
+			if ch == '\\' && i < len(code) {
+				out.WriteByte(code[i])
+				i++
+				continue
 			}
-		} else {
-			if ch == '}' {
-				inComment -= 1
+			if ch == '\'' {
+				inString = false
 			}
-			// else skip characters inside comment
+			continue
 		}
+		if inBlock > 0 {
+			switch ch {
+			case '{':
+				inBlock++
+			case '}':
+				inBlock--
+			}
+			i++
+			continue
+		}
+		if ch == '\'' {
+			inString = true
+			out.WriteByte(ch)
+			i++
+			continue
+		}
+		if ch == '/' && i+1 < len(code) && code[i+1] == '/' {
+			for i < len(code) && code[i] != '\n' {
+				i++
+			}
+			continue
+		}
+		if ch == '{' {
+			inBlock = 1
+			i++
+			continue
+		}
+		out.WriteByte(ch)
+		i++
 	}
 	return out.String()
 }
