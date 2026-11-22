@@ -1849,6 +1849,13 @@ func init() {
 		"BUY":  BUY,
 		"SELL": SELL,
 	}
+
+	// 内置指标函数是无状态列式函数，默认登记为纯函数（可做纯优化）。
+	// 用户通过 RegisterFunction/RegisterContextFunction 注册的扩展函数不在此列，
+	// 默认视为有副作用，需显式 MarkPure 后才参与优化。
+	for name := range functionMap {
+		MarkPure(name)
+	}
 }
 
 // CallIndicatorByReflection 通过反射直接调用原始函数

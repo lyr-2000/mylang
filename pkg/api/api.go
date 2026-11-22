@@ -11,7 +11,9 @@ import (
 	"sync"
 
 	"github.com/lyr-2000/mylang/pkg/extensions/indicators"
+	"github.com/lyr-2000/mylang/pkg/extensions/indicators/fastcall"
 	"github.com/lyr-2000/mylang/pkg/mylang"
+	"github.com/lyr-2000/mylang/pkg/v2/vm"
 	"github.com/spf13/cast"
 )
 
@@ -41,6 +43,12 @@ type MaiExecutor struct {
 	PreCompiledProgram *mylang.Program //if not nil ,use it to execute the program
 	DateTimeKey        string
 	Resolver           SectorResolver
+
+	// 执行后端：useVM=true 走字节码 VM（v2），false 走原树遍历解释器（v1）。
+	useVM            bool
+	vmEngine         *vm.VM
+	vmChunks         map[*mylang.Program]*vm.Chunk
+	contextFuncNames []string // 已注册的 context 函数名（vm 每次 Run 注入）
 }
 
 // OutputKind 输出变量的语义类型（uint8 减少内存占用）。
@@ -79,6 +87,9 @@ func (m *MaiExecutor) SetSectorResolver(r SectorResolver) {
 
 func (m *MaiExecutor) SetCustomVariableGetter(getter func(name string) any) {
 	m.MylangInterpreter.Interp.CustomVariableGetter = getter
+	if m.useVM && m.vmEngine != nil {
+		m.vmEngine.VarGetter = getter
+	}
 }
 
 func (m *MaiExecutor) findOptionalDateTimeKey() string {
@@ -110,14 +121,68 @@ func (m *MaiExecutor) GetDateTimeArray() []any {
 	return d1
 }
 
+// NewMaiExecutor 创建执行器，默认使用 v2 字节码 VM 后端。
 func NewMaiExecutor() *MaiExecutor {
+	d := newMaiExecutorBase()
+	d.useVM = true
+	d.initVM()
+	return d
+}
+
+// NewMaiExecutorV1 创建执行器，使用 v1 树遍历解释器后端。
+// 用于降级：当脚本依赖 VM 尚未支持的边角特性（如 CustomVariableGetter、
+// 运行后读取内部变量等）时，可切换回 v1 保证兼容。
+func NewMaiExecutorV1() *MaiExecutor {
+	return newMaiExecutorBase()
+}
+
+func newMaiExecutorBase() *MaiExecutor {
 	d := &MaiExecutor{
 		MylangInterpreter: mylang.NewMylangInterpreter(),
 	}
 	d.registerFuncs()
 	d.RegisterContextFunction("INSORT", d.insort)
 	d.RegisterContextFunction("INSUM", d.insum)
+	// 锁定系统函数表：内置指标函数 + 上下文函数，禁止用户覆盖。
+	d.ProtectFunctions(indicators.GetAllFuncNames()...)
+	d.ProtectFunctions("INSORT", "INSUM")
 	return d
+}
+
+// initVM 初始化字节码 VM 后端：缓存 VM 实例并注入内置指标函数（普通函数）。
+// context 函数（INSORT/INSUM 等）依赖每次执行的 ctx，在 runCompiledVM 里注入。
+func (m *MaiExecutor) initVM() {
+	m.vmEngine = vm.NewVM()
+	m.vmChunks = map[*mylang.Program]*vm.Chunk{}
+	for _, name := range indicators.GetAllFuncNames() {
+		if fn, ok := m.Env.GetFunction(name); ok {
+			if f, ok := fn.(func([]interface{}) interface{}); ok {
+				m.vmEngine.SetFunc(name, f)
+			}
+		}
+	}
+}
+
+// RegisterFunction 覆盖嵌入方法：注册普通函数，并同步注入 VM 后端（若启用）。
+func (m *MaiExecutor) RegisterFunction(name string, fn func([]interface{}) interface{}) {
+	m.MylangInterpreter.RegisterFunction(name, fn)
+	if m.useVM && m.vmEngine != nil {
+		m.vmEngine.SetFunc(name, fn)
+	}
+}
+
+// RegisterContextFunction 覆盖嵌入方法：注册 context 函数，记录名字供 VM 每次注入。
+func (m *MaiExecutor) RegisterContextFunction(name string, fn mylang.ContextFunc) {
+	m.MylangInterpreter.RegisterContextFunction(name, fn)
+	m.contextFuncNames = append(m.contextFuncNames, name)
+}
+
+// GetVariable 覆盖嵌入方法：VM 后端运行后从 VM 变量表读取（中间变量/输出变量/注入变量）。
+func (m *MaiExecutor) GetVariable(name string) (interface{}, bool) {
+	if m.useVM && m.vmEngine != nil {
+		return m.vmEngine.GetVar(name)
+	}
+	return m.MylangInterpreter.GetVariable(name)
 }
 
 func SetOutput(output io.Writer) {
@@ -129,7 +194,7 @@ func Arrayfloat64(b any) []float64 {
 }
 
 func (b *MaiExecutor) GetBoolArray(name string) []bool {
-	d, ok := b.MylangInterpreter.GetVariable(name)
+	d, ok := b.GetVariable(name)
 	if !ok {
 		return nil
 	}
@@ -137,7 +202,7 @@ func (b *MaiExecutor) GetBoolArray(name string) []bool {
 }
 
 func (b *MaiExecutor) GetByteArray(name string) []byte {
-	d, ok := b.MylangInterpreter.GetVariable(name)
+	d, ok := b.GetVariable(name)
 	if !ok {
 		return nil
 	}
@@ -146,7 +211,7 @@ func (b *MaiExecutor) GetByteArray(name string) []byte {
 }
 
 func (b *MaiExecutor) GetFloat64Array(name string) []float64 {
-	d, ok := b.MylangInterpreter.GetVariable(name)
+	d, ok := b.GetVariable(name)
 	if !ok {
 		return nil
 	}
@@ -154,7 +219,7 @@ func (b *MaiExecutor) GetFloat64Array(name string) []float64 {
 }
 
 func (b *MaiExecutor) GetVariableSlice(name string) []any {
-	d, ok := b.MylangInterpreter.GetVariable(name)
+	d, ok := b.GetVariable(name)
 	if !ok {
 		return nil
 	}
@@ -332,6 +397,13 @@ func (m *MaiExecutor) Run(source string, vars map[string][]float64) ([]Output, e
 // RunWithContext 带执行上下文运行脚本。
 // INSORT/INSUM 等横截面函数依赖 ctx.Symbol/Ts/DataVersion。
 func (m *MaiExecutor) RunWithContext(source string, ctx Ctx, vars map[string][]float64) ([]Output, error) {
+	if m.useVM {
+		prog, err := m.CompileSource(source)
+		if err != nil {
+			return nil, err
+		}
+		return m.runCompiledVM(prog, ctx, vars)
+	}
 	m.PreCompiledProgram = nil
 	m.Reset()
 	m.SetContext(ctx)
@@ -358,6 +430,9 @@ func (m *MaiExecutor) RunCompiledWithContext(program *mylang.Program, ctx Ctx, v
 	if len(program.Errors) > 0 {
 		return nil, &mylang.CompileError{Errors: program.Errors}
 	}
+	if m.useVM {
+		return m.runCompiledVM(program, ctx, vars)
+	}
 	m.PreCompiledProgram = nil
 	m.Reset()
 	m.SetContext(ctx)
@@ -371,6 +446,73 @@ func (m *MaiExecutor) RunCompiledWithContext(program *mylang.Program, ctx Ctx, v
 		return nil, m.Err
 	}
 	return m.Outputs(), nil
+}
+
+// ---- v2 字节码 VM 执行路径 ----
+
+// runCompiledVM 用字节码 VM 执行预编译 Program（编译产物缓存）。
+func (m *MaiExecutor) runCompiledVM(prog *mylang.Program, ctx Ctx, vars map[string][]float64) ([]Output, error) {
+	chunk, ok := m.vmChunks[prog]
+	if !ok {
+		chunk = vm.Compile(prog)
+		m.vmChunks[prog] = chunk
+	}
+	// context 函数依赖当前 ctx，每次执行重新注入。
+	m.injectContextFuncs(ctx)
+	vmOuts, err := m.vmEngine.Run(chunk, anyVars(vars))
+	if err != nil {
+		return nil, err
+	}
+	return m.convertVMOutputs(vmOuts, prog), nil
+}
+
+// injectContextFuncs 把 context 函数（INSORT/INSUM 等）以闭包捕获当前 ctx 注入 VM。
+func (m *MaiExecutor) injectContextFuncs(ctx Ctx) {
+	for _, name := range m.contextFuncNames {
+		fn, ok := m.Env.GetFunction(name)
+		if !ok {
+			continue
+		}
+		cf, ok := fn.(mylang.ContextFunc)
+		if !ok {
+			continue
+		}
+		m.vmEngine.SetFunc(name, func(args []interface{}) interface{} {
+			return cf(ctx, args)
+		})
+	}
+}
+
+// convertVMOutputs 把 vm.Output 转成 api.Output（补 Kind/Values/SuffixParams/Order）。
+func (m *MaiExecutor) convertVMOutputs(vmOuts []vm.Output, prog *mylang.Program) []Output {
+	suffix := map[string][]string{}
+	for _, stmt := range prog.Statements {
+		if as, ok := stmt.(*mylang.AssignmentStatement); ok && as.IsOutputVar {
+			suffix[as.Name.Value] = as.SuffixParams
+		}
+	}
+	out := make([]Output, 0, len(vmOuts))
+	for i, vo := range vmOuts {
+		kind, values := splitOutput(vo.Raw)
+		out = append(out, Output{
+			Name:         vo.Name,
+			Order:        i,
+			Kind:         kind,
+			SuffixParams: suffix[vo.Name],
+			Values:       values,
+			Raw:          vo.Raw,
+		})
+	}
+	return out
+}
+
+// anyVars 把 map[string][]float64 转成 map[string]interface{}（VM 的变量表类型）。
+func anyVars(vars map[string][]float64) map[string]interface{} {
+	out := make(map[string]interface{}, len(vars))
+	for k, v := range vars {
+		out[k] = v
+	}
+	return out
 }
 
 // Outputs 按脚本声明顺序返回画图变量结果。
@@ -452,6 +594,17 @@ func callBasicFunc(name string, args []any) (ret any, err error) {
 func (m *MaiExecutor) registerFuncs() {
 	for _, name := range indicators.GetAllFuncNames() {
 		funcName := name
+		// 去反射：常用函数走类型化调用器，其余兜底反射（语义不变）。
+		if invoker, ok := fastcall.Invoker(funcName); ok {
+			m.RegisterFunction(funcName, func(args []interface{}) interface{} {
+				b, err := invoker(args)
+				if err != nil {
+					return fmt.Errorf("函数 %s: %w", funcName, err)
+				}
+				return b
+			})
+			continue
+		}
 		m.RegisterFunction(funcName, func(args []interface{}) interface{} {
 			b, err := callBasicFunc(funcName, args)
 			if err != nil {

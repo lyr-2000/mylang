@@ -1,6 +1,7 @@
 package mylang
 
 import (
+	"fmt"
 	"reflect"
 	"sort"
 	"strings"
@@ -10,9 +11,10 @@ import (
 
 // MylangInterpreter 代表麦语言解释器的接口
 type MylangInterpreter struct {
-	Interp *Interpreter
-	Env    *Environment
-	Err    error
+	Interp    *Interpreter
+	Env       *Environment
+	Err       error
+	protected map[string]struct{} // 受保护的系统函数名（禁止被覆盖）
 }
 
 func (mi *MylangInterpreter) DelVars() {
@@ -45,6 +47,7 @@ func (mi *MylangInterpreter) SetContext(ctx Context) {
 
 // RegisterContextFunction 注册可读取执行上下文的宿主函数。
 func (mi *MylangInterpreter) RegisterContextFunction(name string, fn ContextFunc) {
+	mi.guardSystemFunction(name)
 	mi.Env.SetFunction(name, fn)
 }
 
@@ -52,7 +55,25 @@ func (mi *MylangInterpreter) RegisterContextFunction(name string, fn ContextFunc
 func NewMylangInterpreter() *MylangInterpreter {
 	env := NewEnvironment()
 	interp := NewInterpreter(env)
-	return &MylangInterpreter{Interp: interp, Env: env}
+	return &MylangInterpreter{Interp: interp, Env: env, protected: map[string]struct{}{}}
+}
+
+// ProtectFunctions 标记一组函数名为「系统函数」，之后禁止被 RegisterFunction /
+// RegisterContextFunction 覆盖。宿主在注册完内置/上下文函数后调用一次，锁定系统函数表。
+func (mi *MylangInterpreter) ProtectFunctions(names ...string) {
+	if mi.protected == nil {
+		mi.protected = make(map[string]struct{})
+	}
+	for _, n := range names {
+		mi.protected[n] = struct{}{}
+	}
+}
+
+// guardSystemFunction 禁止覆盖已标记为系统函数的函数名。
+func (mi *MylangInterpreter) guardSystemFunction(name string) {
+	if _, ok := mi.protected[name]; ok {
+		panic(fmt.Sprintf("mylang: 禁止覆盖系统函数 %q", name))
+	}
 }
 
 // RegisterVariable 注册一个变量到解释器
@@ -62,6 +83,7 @@ func (mi *MylangInterpreter) RegisterVariable(name string, value interface{}) {
 
 // RegisterFunction 注册一个用户自定义函数到解释器
 func (mi *MylangInterpreter) RegisterFunction(name string, fn func([]interface{}) interface{}) {
+	mi.guardSystemFunction(name)
 	mi.Env.SetFunction(name, fn)
 }
 
