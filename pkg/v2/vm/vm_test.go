@@ -22,6 +22,38 @@ func buildVM(ex *api.MaiExecutor) *vm.VM {
 	return v
 }
 
+// countingPool 记录 Get/Put 调用次数的 SeriesPool，用于验证 WithPool 注入生效。
+type countingPool struct {
+	gets int
+	puts int
+}
+
+func (p *countingPool) Get(n int) []float64 { p.gets++; return make([]float64, n) }
+func (p *countingPool) Put(s []float64)     { p.puts++ }
+
+// TestWithPool 验证 WithPool 注入自定义 SeriesPool 后，列式运算走自定义池。
+func TestWithPool(t *testing.T) {
+	ex := api.NewMaiExecutor()
+	prog, err := ex.CompileSource("R:(C-1)*100;")
+	if err != nil {
+		t.Fatal(err)
+	}
+	chunk := vm.Compile(prog)
+
+	cp := &countingPool{}
+	v := vm.NewVM(vm.WithPool(cp))
+	if _, err := v.Run(chunk, map[string]interface{}{"C": make([]float64, 60)}); err != nil {
+		t.Fatal(err)
+	}
+	if cp.gets == 0 {
+		t.Fatal("WithPool 注入的自定义池未被使用（gets == 0）")
+	}
+	if cp.puts == 0 {
+		t.Fatal("轮末未归还 buffer 到自定义池（puts == 0）")
+	}
+	t.Logf("自定义池 Get=%d Put=%d", cp.gets, cp.puts)
+}
+
 func testVars(n int) map[string][]float64 {
 	c := make([]float64, n)
 	h := make([]float64, n)
@@ -125,6 +157,51 @@ func vmValues(o vm.Output) []float64 {
 		}
 	}
 	return nil
+}
+
+// TestMembufNoAliasing 验证 membuf 跨轮复用后，前一轮输出不被后一轮污染（无串味）。
+func TestMembufNoAliasing(t *testing.T) {
+	ex := api.NewMaiExecutor()
+	src := "RSV:=(C-LLV(L,9))/(HHV(H,9)-LLV(L,9))*100; K:EMA(RSV,3); D:EMA(K,3); J:3*K-2*D;"
+	prog, err := ex.CompileSource(src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	chunk := vm.Compile(prog)
+	v := buildVM(ex)
+
+	vars1 := testVars(60)
+	vars2 := testVars(60)
+	for i := range vars2["C"] {
+		vars2["C"][i] += 100 // 数据明显不同，串味会立刻暴露
+	}
+
+	out1, err := v.Run(chunk, anyVars(vars1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	snap := make([][]float64, len(out1))
+	for i, o := range out1 {
+		snap[i] = append([]float64(nil), vmValues(o)...)
+	}
+
+	// 第二轮用不同数据跑，触发 membuf 复用第一轮归还的 buffer。
+	if _, err := v.Run(chunk, anyVars(vars2)); err != nil {
+		t.Fatal(err)
+	}
+
+	// 第一轮输出必须保持不变。
+	for i, o := range out1 {
+		got := vmValues(o)
+		for j := range got {
+			if math.IsNaN(snap[i][j]) && math.IsNaN(got[j]) {
+				continue
+			}
+			if snap[i][j] != got[j] {
+				t.Fatalf("串味：输出 %s[%d] 第一轮 %v → 被污染为 %v", o.Name, j, snap[i][j], got[j])
+			}
+		}
+	}
 }
 
 func anyVars(vars map[string][]float64) map[string]interface{} {

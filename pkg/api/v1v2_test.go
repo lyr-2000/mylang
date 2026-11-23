@@ -138,6 +138,55 @@ func assertSameOutputs(t *testing.T, a, b []Output) {
 	}
 }
 
+// TestRegisterFunctionWithKind 验证自定义函数声明返回类型后，Outputs() 优先用声明值而非运行时推断。
+func TestRegisterFunctionWithKind(t *testing.T) {
+	// 返回 []float64（数值序列）的自定义函数；若不声明，运行时推断为 KindSeries。
+	sigFn := func(args []interface{}) interface{} {
+		s := args[0].([]float64)
+		out := make([]float64, len(s))
+		copy(out, s)
+		return out
+	}
+
+	run := func(ex *MaiExecutor, src string) []Output {
+		t.Helper()
+		outs, err := ex.Run(src, map[string][]float64{"C": v1v2Seq(30)})
+		if err != nil {
+			t.Fatalf("run %q: %v", src, err)
+		}
+		return outs
+	}
+
+	// 1. 声明 KindBuy：直接函数调用输出 → KindBuy（V1/V2 都应生效）
+	for _, ex := range []*MaiExecutor{NewMaiExecutor(), NewMaiExecutorV1()} {
+		ex.RegisterFunctionWithKind("MYSIG", KindBuy, sigFn)
+		if got := run(ex, "R:MYSIG(C);")[0].Kind; got != KindBuy {
+			t.Fatalf("声明 KindBuy 后 R:MYSIG(C) Kind=%v, want KindBuy", got)
+		}
+	}
+
+	// 2. 声明 KindBool：返回 []float64 也能按布尔序列输出
+	ex2 := NewMaiExecutor()
+	ex2.RegisterFunctionWithKind("MYSIG", KindBool, sigFn)
+	if got := run(ex2, "R:MYSIG(C);")[0].Kind; got != KindBool {
+		t.Fatalf("声明 KindBool 后 R:MYSIG(C) Kind=%v, want KindBool", got)
+	}
+
+	// 3. 未声明（RegisterFunction）：兜底运行时推断 → KindSeries
+	ex3 := NewMaiExecutor()
+	ex3.RegisterFunction("MYSIG2", sigFn)
+	if got := run(ex3, "R:MYSIG2(C);")[0].Kind; got != KindSeries {
+		t.Fatalf("未声明时 R:MYSIG2(C) Kind=%v, want KindSeries", got)
+	}
+
+	// 4. 声明 KindBuy 但外层是表达式（非纯函数调用）：兜底推断 → KindSeries
+	ex4 := NewMaiExecutor()
+	ex4.RegisterFunctionWithKind("MYSIG", KindBuy, sigFn)
+	if got := run(ex4, "R:MYSIG(C)*1;")[0].Kind; got != KindSeries {
+		t.Fatalf("外层是表达式时 Kind=%v, want KindSeries", got)
+	}
+}
+
 const v1v2BenchSrc = kdjSrc
 
 // BenchmarkV1 原树遍历解释器后端。

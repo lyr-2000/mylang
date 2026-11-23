@@ -409,9 +409,24 @@ func (i *Interpreter) evalIdentifier(symbol *Identifier) interface{} {
 			return x
 		}
 	}
-	if val, ok := i.env.Get(symbol.Value); ok {
+	if val, ok := i.env.GetVariable(symbol.Value); ok {
 		Logger.Println("Found identifier", symbol.Value, "with value", val)
 		return val
+	}
+	// 无参函数 fallback：麦语言允许无参函数直接写函数名（如 HYBLOCK/GNBLOCK/DYBLOCK/ISLASTBAR）。
+	if fn, ok := i.env.GetFunction(symbol.Value); ok {
+		if f, ok := fn.(func([]interface{}) interface{}); ok {
+			result := f([]interface{}{})
+			if _, isErr := result.(error); isErr {
+				// 无参调用失败（函数需要参数），回退为「变量未定义」
+				if !i.SkipNilPointerCheck {
+					i.Err = fmt.Errorf("变量未定义: %s", symbol.Value)
+				}
+				return nil
+			}
+			Logger.Println("Invoked no-arg function", symbol.Value, "=>", result)
+			return result
+		}
 	}
 	Logger.Println("Identifier", symbol.Value, "not found")
 	if !i.SkipNilPointerCheck {
@@ -433,7 +448,9 @@ func (i *Interpreter) evalFunctionCall(fc *FunctionCall) interface{} {
 		return nil
 	}
 
-	function, ok := i.env.Get(name)
+	// 只查函数表（而非合并的 Get），避免画图语句把函数名当作输出变量名存入变量表后
+	// 遮蔽同名函数，导致后续同名函数调用报「标识符不可调用」。
+	function, ok := i.env.GetFunction(name)
 	if !ok {
 		if !i.SkipNilPointerCheck {
 			i.Err = fmt.Errorf("函数未定义: %s", name)

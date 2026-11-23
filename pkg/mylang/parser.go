@@ -130,8 +130,11 @@ type AssignmentStatement struct {
 	Token        Token
 	Name         *Identifier
 	Value        Expression
-	IsOutputVar bool // true表示是画图变量赋值(:), false表示普通赋值(:=)
+	IsOutputVar  bool     // true表示是画图变量赋值(:), false表示普通赋值(:=)
 	SuffixParams []string // 存储修饰符，如 COLORRED, NODRAW
+	// IsDrawingStatement 标记「无变量名画图语句」（如 DRAWTEXT_FIX(...),COLORRED;）。
+	// 其输出变量名取函数名，执行时遇到重名会追加序号，避免多条同名画图语句互相覆盖。
+	IsDrawingStatement bool
 }
 
 func (as *AssignmentStatement) statementNode() {}
@@ -142,12 +145,12 @@ func (as *AssignmentStatement) String() string {
 	} else {
 		result = as.Name.String() + " := " + as.Value.String()
 	}
-	
+
 	// 添加修饰符
 	if len(as.SuffixParams) > 0 {
 		result += "," + strings.Join(as.SuffixParams, ",")
 	}
-	
+
 	result += ";"
 	return result
 }
@@ -171,11 +174,13 @@ type Parser struct {
 	l       *Lexer
 	curTok  Token
 	peekTok Token
+	// drawingCounts 记录各画图函数已出现的次数，用于给「无变量名画图语句」生成唯一输出名。
+	drawingCounts map[string]int
 }
 
 // NewParser 创建一个新的语法分析器
 func NewParser(l *Lexer) *Parser {
-	p := &Parser{l: l}
+	p := &Parser{l: l, drawingCounts: map[string]int{}}
 	p.nextToken()
 	p.nextToken()
 	return p
@@ -196,7 +201,7 @@ func (p *Parser) ParseProgram() *Program {
 		if stmt != nil {
 			program.Statements = append(program.Statements, stmt)
 		}
-		
+
 		// 语法校验：确保每行以分号结尾
 		if p.curTok.Type != TokenSemicolon && p.curTok.Type != TokenEOF {
 			errorMsg := fmt.Sprintf("第%d行第%d列：语法错误，语句必须以分号结尾，当前token: %s", p.curTok.Line, p.curTok.Column, p.curTok.Literal)
@@ -205,7 +210,7 @@ func (p *Parser) ParseProgram() *Program {
 			// 返回错误程序，停止解析
 			return program
 		}
-		
+
 		p.nextToken()
 	}
 	Logger.Println("Parsed program with", len(program.Statements), "statements")
@@ -253,6 +258,10 @@ func (p *Parser) parseStatement() Statement {
 		// 如果不是赋值语句，尝试解析为表达式语句
 		expr := p.parseExpression(LOWEST)
 		if expr != nil {
+			// 带修饰符或画图函数调用 → 无变量名画图语句（如 DRAWTEXT_FIX(...),COLORRED; / DRAWICON(...);）
+			if p.peekTok.Type == TokenComma || isDrawFuncCall(expr) {
+				return p.parseDrawingStatement(expr)
+			}
 			// 消费分号（如果存在）
 			if p.peekTok.Type == TokenSemicolon {
 				p.nextToken()
@@ -263,6 +272,10 @@ func (p *Parser) parseStatement() Statement {
 		// 尝试解析为表达式语句
 		expr := p.parseExpression(LOWEST)
 		if expr != nil {
+			// 带修饰符或画图函数调用 → 无变量名画图语句
+			if p.peekTok.Type == TokenComma || isDrawFuncCall(expr) {
+				return p.parseDrawingStatement(expr)
+			}
 			// 消费分号（如果存在）
 			if p.peekTok.Type == TokenSemicolon {
 				p.nextToken()
@@ -271,6 +284,19 @@ func (p *Parser) parseStatement() Statement {
 		}
 	}
 	return nil
+}
+
+// isDrawFuncCall 判断表达式是否为「已注册的画图函数」调用。
+func isDrawFuncCall(expr Expression) bool {
+	call, ok := expr.(*FunctionCall)
+	if !ok {
+		return false
+	}
+	id, ok := call.Function.(*Identifier)
+	if !ok {
+		return false
+	}
+	return IsDrawFunc(id.Value)
 }
 
 func (p *Parser) parseAssignmentStatement() *AssignmentStatement {
@@ -299,33 +325,52 @@ func (p *Parser) parseAssignmentStatement() *AssignmentStatement {
 
 	p.nextToken()
 	stmt.Value = p.parseExpression(LOWEST)
+	p.parseSuffixParams(stmt)
+	return stmt
+}
 
-	// 解析修饰符（逗号分隔的标识符）
+// parseSuffixParams 解析赋值语句/画图语句末尾的修饰符（逗号分隔的标识符），并消费分号。
+func (p *Parser) parseSuffixParams(stmt *AssignmentStatement) {
 	if p.peekTok.Type == TokenComma {
 		p.nextToken() // 跳过第一个逗号
 		for p.peekTok.Type == TokenIdentifier {
 			p.nextToken()
 			stmt.SuffixParams = append(stmt.SuffixParams, p.curTok.Literal)
 			Logger.Println("Added suffix param:", p.curTok.Literal)
-
-			// 如果下一个是逗号，继续解析
 			if p.peekTok.Type == TokenComma {
 				p.nextToken() // 跳过逗号
 			} else {
 				break
 			}
 		}
-		// 有修饰符时，消费分号
-		if p.peekTok.Type == TokenSemicolon {
-			p.nextToken()
-		}
-	} else {
-		// 没有修饰符时，也消费分号
-		if p.peekTok.Type == TokenSemicolon {
-			p.nextToken()
+	}
+	// 有/无修饰符都消费分号
+	if p.peekTok.Type == TokenSemicolon {
+		p.nextToken()
+	}
+}
+
+// parseDrawingStatement 解析「无变量名画图语句」，如 DRAWTEXT_FIX(...),COLORC08000;
+// 规范化为 AssignmentStatement：变量名取函数名，IsOutputVar=true，Value 为函数调用表达式。
+func (p *Parser) parseDrawingStatement(expr Expression) *AssignmentStatement {
+	stmt := &AssignmentStatement{Token: p.curTok, SuffixParams: []string{}}
+	stmt.IsOutputVar = true
+	stmt.IsDrawingStatement = true
+	stmt.Value = expr
+	base := expr.String()
+	if call, ok := expr.(*FunctionCall); ok {
+		if id, ok := call.Function.(*Identifier); ok {
+			base = id.Value
 		}
 	}
-
+	// 多条同名画图语句：第 1 条用函数名，后续用「函数名#序号」，保证输出名唯一。
+	p.drawingCounts[base]++
+	name := base
+	if n := p.drawingCounts[base]; n > 1 {
+		name = fmt.Sprintf("%s#%d", base, n)
+	}
+	stmt.Name = &Identifier{Token: p.curTok, Value: name}
+	p.parseSuffixParams(stmt)
 	return stmt
 }
 
@@ -417,7 +462,6 @@ func (p *Parser) parseUnaryExpression() Expression {
 func (p *Parser) parseIdentifier() Expression {
 	return &Identifier{Token: p.curTok, Value: p.curTok.Literal}
 }
-
 
 func (p *Parser) parseNumberLiteral() Expression {
 	lit := &NumberLiteral{Token: p.curTok}

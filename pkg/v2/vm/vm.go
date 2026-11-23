@@ -5,6 +5,7 @@ import (
 	"math"
 
 	"github.com/lyr-2000/mylang/pkg/extensions/indicators"
+	"github.com/lyr-2000/mylang/pkg/v2/membuf"
 )
 
 // Func 是注入的函数签名（与原包 RegisterFunction 的包装函数一致）。
@@ -17,6 +18,27 @@ type Output struct {
 	Raw  interface{}
 }
 
+// SeriesPool 列式运算中间 buffer 的池接口。面向接口编程：VM 只依赖该接口，
+// 默认实现是 membuf.Pool，也可通过 WithPool 注入自定义实现。
+type SeriesPool interface {
+	Get(n int) []float64
+	Put(s []float64)
+}
+
+// defaultSeriesPool 全局共享的默认 buffer 池。membuf.Pool 内部用 sync.Pool，
+// 并发安全，多个 VM 共享同一池可提高 buffer 复用率、减少整体分配。
+var defaultSeriesPool SeriesPool = membuf.New()
+
+// Option 配置 VM 的可选项。
+type Option func(*VM)
+
+// WithPool 用自定义 SeriesPool 替换默认的全局共享池。
+func WithPool(p SeriesPool) Option {
+	return func(v *VM) {
+		v.pool = p
+	}
+}
+
 // VM 字节码虚拟机。vars/funcs 通过 Run/SetFunc 注入，不依赖原包执行器。
 type VM struct {
 	funcs   map[string]Func
@@ -25,14 +47,57 @@ type VM struct {
 	outputs []Output
 	// VarGetter 可选：LOAD_VAR 查不到变量时回调（对应原包 CustomVariableGetter）。
 	VarGetter func(name string) any
+
+	pool      SeriesPool     // 列式运算中间结果的 buffer 池
+	allocated []pooledSeries // 本轮分配的中间 buffer（轮末统一归还）
 }
 
-// NewVM 创建一个空虚拟机。
-func NewVM() *VM {
-	return &VM{
+// pooledSeries 标记「底层数组来自 membuf 池」的序列，与常规 []float64 区分，
+// 便于 STORE 时逃逸复制、轮末归还。
+type pooledSeries []float64
+
+// NewVM 创建一个空虚拟机，默认使用全局共享的 membuf 池，可通过 WithPool 替换。
+func NewVM(opts ...Option) *VM {
+	v := &VM{
 		funcs: map[string]Func{},
 		vars:  map[string]interface{}{},
+		pool:  defaultSeriesPool,
 	}
+	for _, opt := range opts {
+		opt(v)
+	}
+	return v
+}
+
+// SetPool 注入自定义 buffer 池（多个 VM 可共享同一池）。
+func (vm *VM) SetPool(p SeriesPool) { vm.pool = p }
+
+// allocSeries 从池分配长度为 n 的中间序列并记录，供轮末统一归还。
+func (vm *VM) allocSeries(n int) pooledSeries {
+	if vm.pool == nil {
+		return pooledSeries(make([]float64, n))
+	}
+	s := pooledSeries(vm.pool.Get(n))
+	vm.allocated = append(vm.allocated, s)
+	return s
+}
+
+// escapeVal 逃逸复制：pooledSeries 复制到常规内存（作为变量/输出逃逸），其余原样返回。
+func (vm *VM) escapeVal(v interface{}) interface{} {
+	if ps, ok := v.(pooledSeries); ok {
+		return append([]float64(nil), ps...)
+	}
+	return v
+}
+
+// release 归还本轮分配的所有中间 buffer。
+func (vm *VM) release() {
+	for _, s := range vm.allocated {
+		if vm.pool != nil {
+			vm.pool.Put(s)
+		}
+	}
+	vm.allocated = vm.allocated[:0]
 }
 
 // SetFunc 注入一个普通函数。
@@ -50,7 +115,9 @@ func (vm *VM) GetVar(name string) (any, bool) {
 func (vm *VM) Run(chunk *Chunk, vars map[string]interface{}) ([]Output, error) {
 	// 重置运行时状态，保留已注入的函数。
 	vm.stack = vm.stack[:0]
-	vm.outputs = vm.outputs[:0]
+	vm.outputs = nil // 全新 slice：避免与上一轮返回的 outputs 共享底层数组（否则 append 会串味）
+	vm.allocated = vm.allocated[:0]
+	defer vm.release() // 轮末归还所有中间 buffer
 	for k := range vm.vars {
 		delete(vm.vars, k)
 	}
@@ -71,14 +138,24 @@ func (vm *VM) Run(chunk *Chunk, vars map[string]interface{}) ([]Output, error) {
 				}
 			}
 			if !ok {
+				// 无参函数 fallback：裸标识符对应无参函数（如 HYBLOCK）。
+				if fn, fok := vm.funcs[name]; fok {
+					val = fn(nil)
+					if _, isErr := val.(error); isErr {
+						return nil, fmt.Errorf("变量未定义: %s", name)
+					}
+					ok = true
+				}
+			}
+			if !ok {
 				return nil, fmt.Errorf("变量未定义: %s", name)
 			}
 			vm.push(val)
 		case OpStoreVar:
-			vm.vars[chunk.Names[instr.Idx]] = vm.pop()
+			vm.vars[chunk.Names[instr.Idx]] = vm.escapeVal(vm.pop())
 		case OpStoreOutput:
 			name := chunk.Names[instr.Idx]
-			val := vm.pop()
+			val := vm.escapeVal(vm.pop())
 			vm.vars[name] = val
 			vm.outputs = append(vm.outputs, Output{Name: name, Raw: val})
 		case OpPop:
@@ -86,20 +163,26 @@ func (vm *VM) Run(chunk *Chunk, vars map[string]interface{}) ([]Output, error) {
 		case OpAdd, OpSub, OpMul, OpDiv, OpGT, OpLT, OpGE, OpLE, OpEQ, OpNE, OpAnd, OpOr:
 			right := vm.pop()
 			left := vm.pop()
-			val, err := binOp(left, right, instr.Op)
+			val, err := vm.binOp(left, right, instr.Op)
 			if err != nil {
 				return nil, err
 			}
 			vm.push(val)
 		case OpNot, OpNeg:
-			vm.push(unaryOp(vm.pop(), instr.Op))
+			vm.push(vm.unaryOp(vm.pop(), instr.Op))
 		case OpCall:
 			name := chunk.Names[instr.Idx]
 			fn, ok := vm.funcs[name]
 			if !ok {
 				return nil, fmt.Errorf("函数未定义: %s", name)
 			}
-			result := fn(vm.popN(instr.N))
+			args := vm.popN(instr.N)
+			for i, a := range args {
+				if ps, ok := a.(pooledSeries); ok {
+					args[i] = []float64(ps) // 零拷贝转常规切片，供注入函数（fastcall）识别
+				}
+			}
+			result := fn(args)
 			if err, ok := result.(error); ok {
 				return nil, err
 			}
@@ -136,18 +219,18 @@ func isArith(op Opcode) bool   { return op >= OpAdd && op <= OpDiv }
 func isCompare(op Opcode) bool { return op >= OpGT && op <= OpNE }
 
 // binOp 复刻原包 evalBinaryExpression 的语义，但把 operator 的 switch 提到循环外。
-func binOp(left, right interface{}, op Opcode) (interface{}, error) {
+func (vm *VM) binOp(left, right interface{}, op Opcode) (interface{}, error) {
 	if op == OpAnd || op == OpOr {
-		return logicOp(left, right, op), nil
+		return vm.logicOp(left, right, op), nil
 	}
 	if isCompare(op) {
-		return compareOp(left, right, op), nil
+		return vm.compareOp(left, right, op), nil
 	}
-	return arithOp(left, right, op)
+	return vm.arithOp(left, right, op)
 }
 
 // arithOp 算术：标量标量 / 数组标量 / 标量数组 / 数组数组（长度不匹配报错）。
-func arithOp(left, right interface{}, op Opcode) (interface{}, error) {
+func (vm *VM) arithOp(left, right interface{}, op Opcode) (interface{}, error) {
 	if l, ok := left.(float64); ok {
 		if r, ok := right.(float64); ok {
 			return scalarArith(l, r, op), nil
@@ -159,16 +242,16 @@ func arithOp(left, right interface{}, op Opcode) (interface{}, error) {
 		if len(larr) != len(rarr) {
 			return nil, fmt.Errorf("数组长度不匹配: %d != %d", len(larr), len(rarr))
 		}
-		return arrArrArith(larr, rarr, op), nil
+		return vm.arrArrArith(larr, rarr, op), nil
 	}
 	if lok {
 		if r, ok := right.(float64); ok {
-			return arrScalarArith(larr, r, op), nil
+			return vm.arrScalarArith(larr, r, op), nil
 		}
 	}
 	if rok {
 		if l, ok := left.(float64); ok {
-			return scalarArrArith(l, rarr, op), nil
+			return vm.scalarArrArith(l, rarr, op), nil
 		}
 	}
 	return nil, nil
@@ -191,8 +274,8 @@ func scalarArith(l, r float64, op Opcode) float64 {
 	return 0
 }
 
-func arrArrArith(a, b []float64, op Opcode) []float64 {
-	result := make([]float64, len(a))
+func (vm *VM) arrArrArith(a, b []float64, op Opcode) pooledSeries {
+	result := vm.allocSeries(len(a))
 	switch op {
 	case OpAdd:
 		for i := range a {
@@ -218,8 +301,8 @@ func arrArrArith(a, b []float64, op Opcode) []float64 {
 	return result
 }
 
-func arrScalarArith(a []float64, s float64, op Opcode) []float64 {
-	result := make([]float64, len(a))
+func (vm *VM) arrScalarArith(a []float64, s float64, op Opcode) pooledSeries {
+	result := vm.allocSeries(len(a))
 	switch op {
 	case OpAdd:
 		for i := range a {
@@ -247,8 +330,8 @@ func arrScalarArith(a []float64, s float64, op Opcode) []float64 {
 	return result
 }
 
-func scalarArrArith(s float64, b []float64, op Opcode) []float64 {
-	result := make([]float64, len(b))
+func (vm *VM) scalarArrArith(s float64, b []float64, op Opcode) pooledSeries {
+	result := vm.allocSeries(len(b))
 	switch op {
 	case OpAdd:
 		for i := range b {
@@ -271,17 +354,17 @@ func scalarArrArith(s float64, b []float64, op Opcode) []float64 {
 }
 
 // compareOp 比较：标量返回 bool，数组返回 []float64（0/1）。
-func compareOp(left, right interface{}, op Opcode) interface{} {
+func (vm *VM) compareOp(left, right interface{}, op Opcode) interface{} {
 	larr, lok := asFloat64Slice(left)
 	rarr, rok := asFloat64Slice(right)
 	if lok && rok {
-		return arrArrCompare(larr, rarr, op)
+		return vm.arrArrCompare(larr, rarr, op)
 	}
 	if lok {
-		return arrScalarCompare(larr, toFloat64(right), op)
+		return vm.arrScalarCompare(larr, toFloat64(right), op)
 	}
 	if rok {
-		return arrScalarCompare(rarr, toFloat64(left), op)
+		return vm.arrScalarCompare(rarr, toFloat64(left), op)
 	}
 	return scalarCompare(toFloat64(left), toFloat64(right), op)
 }
@@ -304,12 +387,13 @@ func scalarCompare(l, r float64, op Opcode) bool {
 	return false
 }
 
-func arrArrCompare(a, b []float64, op Opcode) []float64 {
+func (vm *VM) arrArrCompare(a, b []float64, op Opcode) pooledSeries {
 	n := len(a)
 	if len(b) < n {
 		n = len(b)
 	}
-	result := make([]float64, n)
+	result := vm.allocSeries(n)
+	clear(result) // 复用 buffer 可能残留旧值，0/1 结果需先清零
 	switch op {
 	case OpGT:
 		for i := 0; i < n; i++ {
@@ -351,8 +435,9 @@ func arrArrCompare(a, b []float64, op Opcode) []float64 {
 	return result
 }
 
-func arrScalarCompare(a []float64, s float64, op Opcode) []float64 {
-	result := make([]float64, len(a))
+func (vm *VM) arrScalarCompare(a []float64, s float64, op Opcode) pooledSeries {
+	result := vm.allocSeries(len(a))
+	clear(result)
 	switch op {
 	case OpGT:
 		for i := range a {
@@ -395,17 +480,17 @@ func arrScalarCompare(a []float64, s float64, op Opcode) []float64 {
 }
 
 // logicOp 逻辑 AND/OR：标量返回 bool，数组返回 []float64（0/1）。
-func logicOp(left, right interface{}, op Opcode) interface{} {
+func (vm *VM) logicOp(left, right interface{}, op Opcode) interface{} {
 	larr, lok := asFloat64Slice(left)
 	rarr, rok := asFloat64Slice(right)
 	if lok && rok {
-		return arrArrLogic(larr, rarr, op)
+		return vm.arrArrLogic(larr, rarr, op)
 	}
 	if lok {
-		return arrScalarLogic(larr, toBool(right), op)
+		return vm.arrScalarLogic(larr, toBool(right), op)
 	}
 	if rok {
-		return arrScalarLogic(rarr, toBool(left), op)
+		return vm.arrScalarLogic(rarr, toBool(left), op)
 	}
 	return scalarLogic(toBool(left), toBool(right), op)
 }
@@ -417,12 +502,13 @@ func scalarLogic(l, r bool, op Opcode) bool {
 	return l || r
 }
 
-func arrArrLogic(a, b []float64, op Opcode) []float64 {
+func (vm *VM) arrArrLogic(a, b []float64, op Opcode) pooledSeries {
 	n := len(a)
 	if len(b) < n {
 		n = len(b)
 	}
-	result := make([]float64, n)
+	result := vm.allocSeries(n)
+	clear(result)
 	for i := 0; i < n; i++ {
 		lb, rb := a[i] != 0, b[i] != 0
 		if (op == OpAnd && lb && rb) || (op == OpOr && (lb || rb)) {
@@ -432,8 +518,9 @@ func arrArrLogic(a, b []float64, op Opcode) []float64 {
 	return result
 }
 
-func arrScalarLogic(a []float64, s bool, op Opcode) []float64 {
-	result := make([]float64, len(a))
+func (vm *VM) arrScalarLogic(a []float64, s bool, op Opcode) pooledSeries {
+	result := vm.allocSeries(len(a))
+	clear(result)
 	for i := range a {
 		b := a[i] != 0
 		if (op == OpAnd && b && s) || (op == OpOr && (b || s)) {
@@ -444,13 +531,13 @@ func arrScalarLogic(a []float64, s bool, op Opcode) []float64 {
 }
 
 // unaryOp 一元运算：Not（!）与 Neg（-）。
-func unaryOp(v interface{}, op Opcode) interface{} {
+func (vm *VM) unaryOp(v interface{}, op Opcode) interface{} {
 	if op == OpNeg {
 		if s, ok := v.(float64); ok {
 			return -s
 		}
 		if arr, ok := asFloat64Slice(v); ok {
-			out := make([]float64, len(arr))
+			out := vm.allocSeries(len(arr))
 			for i := range arr {
 				out[i] = -arr[i]
 			}
@@ -460,7 +547,7 @@ func unaryOp(v interface{}, op Opcode) interface{} {
 	}
 	// OpNot
 	if arr, ok := asFloat64Slice(v); ok {
-		out := make([]float64, len(arr))
+		out := vm.allocSeries(len(arr))
 		for i := range arr {
 			if arr[i] == 0 {
 				out[i] = 1
@@ -478,6 +565,8 @@ func asFloat64Slice(v interface{}) ([]float64, bool) {
 	case []float64:
 		return x, true
 	case indicators.Series:
+		return []float64(x), true
+	case pooledSeries:
 		return []float64(x), true
 	}
 	return nil, false
@@ -508,6 +597,11 @@ func toFloat64(v interface{}) float64 {
 			return x[0]
 		}
 		return 0
+	case pooledSeries:
+		if len(x) > 0 {
+			return x[0]
+		}
+		return 0
 	}
 	return 0
 }
@@ -528,6 +622,13 @@ func toBool(v interface{}) bool {
 		}
 		return false
 	case indicators.Series:
+		for _, e := range x {
+			if e != 0 {
+				return true
+			}
+		}
+		return false
+	case pooledSeries:
 		for _, e := range x {
 			if e != 0 {
 				return true

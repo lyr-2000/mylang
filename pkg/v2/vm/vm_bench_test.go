@@ -25,7 +25,7 @@ func BenchmarkOriginal(t *testing.B) {
 	}
 }
 
-// BenchmarkVM 字节码虚拟机。
+// BenchmarkVM 字节码虚拟机（默认开启 membuf 复用）。
 func BenchmarkVM(t *testing.B) {
 	ex := api.NewMaiExecutor()
 	prog, err := ex.CompileSource(benchSrc)
@@ -34,6 +34,25 @@ func BenchmarkVM(t *testing.B) {
 	}
 	chunk := vm.Compile(prog)
 	v := buildVM(ex)
+	vars := anyVars(testVars(500))
+	t.ResetTimer()
+	for i := 0; i < t.N; i++ {
+		if _, err := v.Run(chunk, vars); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+// BenchmarkVMNoMembuf 字节码虚拟机，但关闭 membuf 复用（对比内存收益）。
+func BenchmarkVMNoMembuf(t *testing.B) {
+	ex := api.NewMaiExecutor()
+	prog, err := ex.CompileSource(benchSrc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	chunk := vm.Compile(prog)
+	v := buildVM(ex)
+	v.SetPool(nil) // 关闭复用
 	vars := anyVars(testVars(500))
 	t.ResetTimer()
 	for i := 0; i < t.N; i++ {

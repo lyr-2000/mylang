@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/lyr-2000/mylang/pkg/extensions/drawing"
 	"github.com/lyr-2000/mylang/pkg/extensions/indicators"
 	"github.com/lyr-2000/mylang/pkg/extensions/indicators/fastcall"
 	"github.com/lyr-2000/mylang/pkg/mylang"
@@ -42,13 +43,49 @@ type MaiExecutor struct {
 	*mylang.MylangInterpreter
 	PreCompiledProgram *mylang.Program //if not nil ,use it to execute the program
 	DateTimeKey        string
-	Resolver           SectorResolver
+
+	// dataSource 统一的外部数据源（板块/横截面等），供 INSORT/INSUM/INBLOCK 使用。
+	dataSource DataSource
 
 	// 执行后端：useVM=true 走字节码 VM（v2），false 走原树遍历解释器（v1）。
 	useVM            bool
 	vmEngine         *vm.VM
 	vmChunks         map[*mylang.Program]*vm.Chunk
 	contextFuncNames []string // 已注册的 context 函数名（vm 每次 Run 注入）
+
+	// funcKinds 记录用户自定义函数声明的返回类型（RegisterFunctionWithKind）。
+	// Outputs() 优先用它确定输出变量的 Kind，否则退回 splitOutput 运行时推断。
+	funcKinds map[string]OutputKind
+
+	// lastProgram 记录 v1 路径最后一次执行的 Program，供 Outputs() 依据赋值表达式推断 Kind。
+	lastProgram *mylang.Program
+}
+
+// BlockChecker 板块数据源接口，宿主实现后供 INBLOCK 等函数使用。
+// 定义为接口便于后续扩展（如增加所属板块列表、行业/概念判断等方法）。
+type BlockChecker interface {
+	// InBlock 判断品种 symbol 是否属于指定板块 block。
+	InBlock(symbol, block string) bool
+}
+
+// BlockCheckerFunc 是 BlockChecker 的函数适配器，便于用闭包快速实现。
+type BlockCheckerFunc func(symbol, block string) bool
+
+// InBlock 实现 BlockChecker 接口。
+func (f BlockCheckerFunc) InBlock(symbol, block string) bool { return f(symbol, block) }
+
+// DataSource 统一的外部数据源，聚合板块/横截面等宿主数据能力。
+// 各字段可选，nil 表示未提供对应能力。
+type DataSource struct {
+	// SectorResolver 横截面板块数据（INSORT/INSUM）。
+	SectorResolver SectorResolver
+	// BlockChecker 板块归属判断（INBLOCK）。
+	BlockChecker BlockChecker
+}
+
+// SetDataSource 一次性注入完整数据源。
+func (m *MaiExecutor) SetDataSource(ds DataSource) {
+	m.dataSource = ds
 }
 
 // OutputKind 输出变量的语义类型（uint8 减少内存占用）。
@@ -82,7 +119,12 @@ func (m *MaiExecutor) SetDateTimeKey(name string) {
 
 // SetSectorResolver 注入板块数据提供者；INSORT/INSUM 依赖它。
 func (m *MaiExecutor) SetSectorResolver(r SectorResolver) {
-	m.Resolver = r
+	m.dataSource.SectorResolver = r
+}
+
+// SetBlockChecker 注入板块归属判断；INBLOCK 依赖它。
+func (m *MaiExecutor) SetBlockChecker(f BlockChecker) {
+	m.dataSource.BlockChecker = f
 }
 
 func (m *MaiExecutor) SetCustomVariableGetter(getter func(name string) any) {
@@ -139,22 +181,26 @@ func NewMaiExecutorV1() *MaiExecutor {
 func newMaiExecutorBase() *MaiExecutor {
 	d := &MaiExecutor{
 		MylangInterpreter: mylang.NewMylangInterpreter(),
+		funcKinds:         map[string]OutputKind{},
 	}
 	d.registerFuncs()
 	d.RegisterContextFunction("INSORT", d.insort)
 	d.RegisterContextFunction("INSUM", d.insum)
-	// 锁定系统函数表：内置指标函数 + 上下文函数，禁止用户覆盖。
+	d.RegisterContextFunction("INBLOCK", d.inblock)
+	// 锁定系统函数表：内置指标函数 + 画图/文本函数 + 上下文函数，禁止用户覆盖。
 	d.ProtectFunctions(indicators.GetAllFuncNames()...)
-	d.ProtectFunctions("INSORT", "INSUM")
+	d.ProtectFunctions(drawing.GetAllFuncNames()...)
+	d.ProtectFunctions("INSORT", "INSUM", "INBLOCK")
 	return d
 }
 
-// initVM 初始化字节码 VM 后端：缓存 VM 实例并注入内置指标函数（普通函数）。
+// initVM 初始化字节码 VM 后端：缓存 VM 实例并注入内置指标函数 + 画图/文本函数（普通函数）。
 // context 函数（INSORT/INSUM 等）依赖每次执行的 ctx，在 runCompiledVM 里注入。
 func (m *MaiExecutor) initVM() {
 	m.vmEngine = vm.NewVM()
 	m.vmChunks = map[*mylang.Program]*vm.Chunk{}
-	for _, name := range indicators.GetAllFuncNames() {
+	names := append(indicators.GetAllFuncNames(), drawing.GetAllFuncNames()...)
+	for _, name := range names {
 		if fn, ok := m.Env.GetFunction(name); ok {
 			if f, ok := fn.(func([]interface{}) interface{}); ok {
 				m.vmEngine.SetFunc(name, f)
@@ -169,6 +215,18 @@ func (m *MaiExecutor) RegisterFunction(name string, fn func([]interface{}) inter
 	if m.useVM && m.vmEngine != nil {
 		m.vmEngine.SetFunc(name, fn)
 	}
+}
+
+// RegisterFunctionWithKind 注册普通函数并声明其返回类型。
+// 输出变量直接由该函数赋值时（如 R:MyBuySignal(C)），Outputs() 将优先用这里声明的
+// kind 确定 Kind 字段，而不再依赖 splitOutput 的运行时类型推断，避免 []float64 无法区分
+// 「数值序列 / 布尔 0/1 / 买卖信号」的歧义。
+func (m *MaiExecutor) RegisterFunctionWithKind(name string, kind OutputKind, fn func([]interface{}) interface{}) {
+	m.RegisterFunction(name, fn)
+	if m.funcKinds == nil {
+		m.funcKinds = map[string]OutputKind{}
+	}
+	m.funcKinds[name] = kind
 }
 
 // RegisterContextFunction 覆盖嵌入方法：注册 context 函数，记录名字供 VM 每次注入。
@@ -411,7 +469,12 @@ func (m *MaiExecutor) RunWithContext(source string, ctx Ctx, vars map[string][]f
 		m.SetVarMap(vars)
 		m.SetVarNameAlias(nil)
 	}
-	if err := m.RunCode(source); err != nil {
+	prog, err := m.CompileSource(source)
+	if err != nil {
+		return nil, err
+	}
+	m.lastProgram = prog
+	if err := m.executeProgramV1(prog); err != nil {
 		return nil, err
 	}
 	return m.Outputs(), nil
@@ -440,12 +503,23 @@ func (m *MaiExecutor) RunCompiledWithContext(program *mylang.Program, ctx Ctx, v
 		m.SetVarMap(vars)
 		m.SetVarNameAlias(nil)
 	}
-	m.ResetRuntimeState()
-	m.MylangInterpreter.ExecuteProgram(program)
-	if m.Err != nil {
-		return nil, m.Err
+	m.lastProgram = program
+	if err := m.executeProgramV1(program); err != nil {
+		return nil, err
 	}
 	return m.Outputs(), nil
+}
+
+// executeProgramV1 用 v1 树遍历解释器执行 Program，panic 转 error（与 RunCode 语义一致）。
+func (m *MaiExecutor) executeProgramV1(prog *mylang.Program) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("execute program panic: %v", r)
+		}
+	}()
+	m.ResetRuntimeState()
+	m.MylangInterpreter.ExecuteProgram(prog)
+	return m.Err
 }
 
 // ---- v2 字节码 VM 执行路径 ----
@@ -486,22 +560,27 @@ func (m *MaiExecutor) injectContextFuncs(ctx Ctx) {
 // convertVMOutputs 把 vm.Output 转成 api.Output（补 Kind/Values/SuffixParams/Order）。
 func (m *MaiExecutor) convertVMOutputs(vmOuts []vm.Output, prog *mylang.Program) []Output {
 	suffix := map[string][]string{}
+	expr := map[string]mylang.Expression{}
 	for _, stmt := range prog.Statements {
 		if as, ok := stmt.(*mylang.AssignmentStatement); ok && as.IsOutputVar {
 			suffix[as.Name.Value] = as.SuffixParams
+			expr[as.Name.Value] = as.Value
 		}
 	}
 	out := make([]Output, 0, len(vmOuts))
 	for i, vo := range vmOuts {
-		kind, values := splitOutput(vo.Raw)
-		out = append(out, Output{
+		kind := m.inferOutputKind(expr[vo.Name], vo.Raw)
+		values := splitOutputValues(vo.Raw)
+		o := Output{
 			Name:         vo.Name,
 			Order:        i,
 			Kind:         kind,
 			SuffixParams: suffix[vo.Name],
 			Values:       values,
 			Raw:          vo.Raw,
-		})
+		}
+		fillDrawColor(&o)
+		out = append(out, o)
 	}
 	return out
 }
@@ -517,6 +596,7 @@ func anyVars(vars map[string][]float64) map[string]interface{} {
 
 // Outputs 按脚本声明顺序返回画图变量结果。
 func (m *MaiExecutor) Outputs() []Output {
+	expr := m.outputExprs()
 	vars := m.MylangInterpreter.OrderedOutputVariables()
 	out := make([]Output, 0, len(vars))
 	for _, v := range vars {
@@ -524,15 +604,32 @@ func (m *MaiExecutor) Outputs() []Output {
 		if !ok {
 			continue
 		}
-		kind, values := splitOutput(raw)
-		out = append(out, Output{
+		kind := m.inferOutputKind(expr[v.Name], raw)
+		values := splitOutputValues(raw)
+		o := Output{
 			Name:         v.Name,
 			Order:        v.Order,
 			Kind:         kind,
 			SuffixParams: v.SuffixParams,
 			Values:       values,
 			Raw:          raw,
-		})
+		}
+		fillDrawColor(&o)
+		out = append(out, o)
+	}
+	return out
+}
+
+// outputExprs 返回「输出变量名 → 赋值表达式」映射（来自最后一次执行的 Program）。
+func (m *MaiExecutor) outputExprs() map[string]mylang.Expression {
+	out := map[string]mylang.Expression{}
+	if m.lastProgram == nil {
+		return out
+	}
+	for _, stmt := range m.lastProgram.Statements {
+		if as, ok := stmt.(*mylang.AssignmentStatement); ok && as.IsOutputVar {
+			out[as.Name.Value] = as.Value
+		}
 	}
 	return out
 }
@@ -548,22 +645,61 @@ func boolsToValues(bools []bool) []float64 {
 	return out
 }
 
-func splitOutput(raw any) (OutputKind, []float64) {
-	switch v := raw.(type) {
+// inferKind 从运行时值推断语义类型（不含用户声明覆盖）。
+func inferKind(raw any) OutputKind {
+	switch raw.(type) {
 	case indicators.BuySignal:
-		return KindBuy, []float64(v)
+		return KindBuy
 	case indicators.SellSignal:
-		return KindSell, []float64(v)
+		return KindSell
 	case []bool:
-		return KindBool, boolsToValues(v)
+		return KindBool
 	case []float64:
-		return KindSeries, v
+		return KindSeries
 	case indicators.Series:
-		return KindSeries, []float64(v)
+		return KindSeries
+	case string, []string:
+		return KindDraw
+	case drawing.Command, *drawing.Command:
+		return KindDraw
 	}
 	items, ok := mylang.ToSlice(raw)
 	if !ok {
-		return KindNaN, nil
+		return KindNaN
+	}
+	bools := 0
+	for _, item := range items {
+		if _, ok := item.(bool); ok {
+			bools++
+		}
+	}
+	if len(items) > 0 && bools == len(items) {
+		return KindBool
+	}
+	return KindSeries
+}
+
+// splitOutputValues 只提取输出值（不做语义类型推断），供 kind 已确定时复用。
+func splitOutputValues(raw any) []float64 {
+	switch v := raw.(type) {
+	case indicators.BuySignal:
+		return []float64(v)
+	case indicators.SellSignal:
+		return []float64(v)
+	case []bool:
+		return boolsToValues(v)
+	case []float64:
+		return v
+	case indicators.Series:
+		return []float64(v)
+	case string, []string:
+		return nil // 画图/文本输出无数值序列，内容由 Raw 承载
+	case drawing.Command, *drawing.Command:
+		return nil
+	}
+	items, ok := mylang.ToSlice(raw)
+	if !ok {
+		return nil
 	}
 	values := make([]float64, 0, len(items))
 	bools := make([]bool, 0, len(items))
@@ -575,9 +711,52 @@ func splitOutput(raw any) (OutputKind, []float64) {
 		values = append(values, cast.ToFloat64(item))
 	}
 	if len(items) > 0 && len(bools) == len(items) {
-		return KindBool, boolsToValues(bools)
+		return boolsToValues(bools)
 	}
-	return KindSeries, values
+	return values
+}
+
+// splitOutput 推断语义类型 + 提取输出值（运行时类型断言，未声明 kind 时的兜底）。
+func splitOutput(raw any) (OutputKind, []float64) {
+	return inferKind(raw), splitOutputValues(raw)
+}
+
+// extractColor 从修饰符列表提取颜色（COLOR 开头的修饰符，如 COLORC08000）。
+func extractColor(suffix []string) string {
+	for _, s := range suffix {
+		if strings.HasPrefix(s, "COLOR") {
+			return s
+		}
+	}
+	return ""
+}
+
+// fillDrawColor 对画图输出，从修饰符提取颜色并填充 drawing.Command.Color。
+func fillDrawColor(o *Output) {
+	color := extractColor(o.SuffixParams)
+	if color == "" {
+		return
+	}
+	switch d := o.Raw.(type) {
+	case *drawing.Command:
+		d.Color = color
+	case drawing.Command:
+		d.Color = color
+		o.Raw = d
+	}
+}
+
+// inferOutputKind 确定输出变量的语义类型：赋值表达式最外层是函数调用且该函数已用
+// RegisterFunctionWithKind 声明类型时，直接采用声明值；否则退回运行时推断。
+func (m *MaiExecutor) inferOutputKind(value mylang.Expression, raw any) OutputKind {
+	if call, ok := value.(*mylang.FunctionCall); ok {
+		if id, ok := call.Function.(*mylang.Identifier); ok {
+			if k, ok := m.funcKinds[id.Value]; ok {
+				return k
+			}
+		}
+	}
+	return inferKind(raw)
 }
 
 func callBasicFunc(name string, args []any) (ret any, err error) {
@@ -612,6 +791,10 @@ func (m *MaiExecutor) registerFuncs() {
 			}
 			return b
 		})
+	}
+	// 画图/文本函数：统一签名，直接注册。
+	for _, name := range drawing.GetAllFuncNames() {
+		m.RegisterFunction(name, drawing.Funcs[name])
 	}
 }
 
@@ -808,11 +991,11 @@ func (m *MaiExecutor) insort(ctx Ctx, args []any) any {
 	if !ok || (order != 0 && order != 1) {
 		return fmt.Errorf("INSORT 升降序只能是 0(降序) 或 1(升序)")
 	}
-	if m.Resolver == nil {
+	if m.dataSource.SectorResolver == nil {
 		return m.crossSectionError(ctx, fmt.Errorf("INSORT/INSUM 需要 SectorResolver"))
 	}
 
-	u, currentKey, err := m.Resolver.ResolveUniverse(sector, indicator, output, ctx)
+	u, currentKey, err := m.dataSource.SectorResolver.ResolveUniverse(sector, indicator, output, ctx)
 	if err != nil {
 		return m.crossSectionError(ctx, err)
 	}
@@ -850,11 +1033,11 @@ func (m *MaiExecutor) insum(ctx Ctx, args []any) any {
 	if !ok || calcType < 0 || calcType > 5 {
 		return fmt.Errorf("INSUM 计算类型只能是 0~5")
 	}
-	if m.Resolver == nil {
+	if m.dataSource.SectorResolver == nil {
 		return m.crossSectionError(ctx, fmt.Errorf("INSORT/INSUM 需要 SectorResolver"))
 	}
 
-	u, _, err := m.Resolver.ResolveUniverse(sector, indicator, output, ctx)
+	u, _, err := m.dataSource.SectorResolver.ResolveUniverse(sector, indicator, output, ctx)
 	if err != nil {
 		return m.crossSectionError(ctx, err)
 	}
@@ -863,4 +1046,23 @@ func (m *MaiExecutor) insum(ctx Ctx, args []any) any {
 		return m.crossSectionError(ctx, err)
 	}
 	return table.Aggregates[calcType]
+}
+
+// inblock 对应 INBLOCK('板块')：判断当前品种是否属于指定板块（依赖宿主 SetBlockChecker）。
+// 未注入 BlockChecker 时恒返回 0。
+func (m *MaiExecutor) inblock(ctx Ctx, args []any) any {
+	if len(args) < 1 {
+		return fmt.Errorf("INBLOCK 需要 1 个参数")
+	}
+	block, ok := args[0].(string)
+	if !ok || block == "" {
+		return fmt.Errorf("INBLOCK 板块名称必须是非空字符串")
+	}
+	if m.dataSource.BlockChecker == nil {
+		return 0.0
+	}
+	if m.dataSource.BlockChecker.InBlock(ctx.Symbol, block) {
+		return 1.0
+	}
+	return 0.0
 }
